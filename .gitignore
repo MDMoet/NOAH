@@ -1,0 +1,120 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+AnyCPU/
+
+# Published output
+publish/
+artifacts/
+
+# User-specific files
+*.user
+*.rsuser
+*.suo
+*.userprefs
+*.pidb
+*.svclog
+*.cache
+*.pdb
+*.mdb
+
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.VC.opendb
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!**/packages/build/
+.nuget/
+
+# .NET local tools / config
+.dotnet/
+global.json.user
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test / coverage
+TestResults/
+*.trx
+coverage/
+coverage-report/
+*.coverage
+*.coveragexml
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local app settings overrides
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Secrets / certificates / signing
+*.pfx
+*.snk
+*.keystore
+*.jks
+
+# SQLite / local databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# .NET MAUI / Xamarin / Android
+**/Platforms/Android/.gradle/
+**/Platforms/Android/local.properties
+**/Platforms/Android/build/
+**/platforms/android/.gradle/
+**/platforms/android/build/
+
+# Android SDK / emulator generated
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Apple build artifacts
+*.app
+*.ipa
+*.dSYM
+*.xcuserstate
+
+# MAUI generated resources
+**/Resources/**/__MACOSX/
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+*.bak
+
+# Resharper / Rider caches
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Generated files
+Generated/
