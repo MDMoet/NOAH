@@ -1,7 +1,10 @@
+using Api.Interfaces;
+using Api.Services;
 using Microsoft.EntityFrameworkCore;
+using NOAH.Api.Middleware;
 using NOAH.Infrastructure.Persistence;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -10,7 +13,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<NoahDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-var app = builder.Build();
+builder.Services.AddScoped<INotesService, NotesService>();
+
+WebApplication app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
@@ -19,6 +24,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<ApiKeyMiddleware>();
+
 app.MapControllers();
 
 app.Run();

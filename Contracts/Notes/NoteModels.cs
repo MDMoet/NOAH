@@ -1,3 +1,4 @@
+// ReSharper disable once CheckNamespace
 namespace NOAH.Contracts.Notes;
 
 public sealed record NoteDto(
@@ -18,3 +19,7 @@ public sealed record CreateNoteRequest(
 public sealed record UpdateNoteRequest(
     string Title,
     string Content);
+
+public sealed record PartialUpdateNoteRequest(
+    string? Title,
+    string? Content);
