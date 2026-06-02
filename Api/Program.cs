@@ -14,6 +14,7 @@ builder.Services.AddDbContext<NoahDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<INotesService, NotesService>();
+builder.Services.AddScoped<ITasksService, TasksService>();
 
 WebApplication app = builder.Build();
 

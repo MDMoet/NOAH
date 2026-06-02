@@ -1,5 +1,6 @@
 using NOAH.Contracts.Enums;
 
+// ReSharper disable once CheckNamespace
 namespace NOAH.Contracts.Tasks;
 
 public sealed record TaskItemDto(
