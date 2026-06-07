@@ -1,5 +1,8 @@
 using Api.Interfaces;
+using Api.Interfaces.Providers;
+using Api.Options;
 using Api.Services;
+using Api.Services.Providers;
 using Microsoft.EntityFrameworkCore;
 using NOAH.Api.Middleware;
 using NOAH.Infrastructure.Persistence;
@@ -13,8 +16,15 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<NoahDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.Configure<OpenStreetMapModel>(
+    builder.Configuration.GetSection(OpenStreetMapModel.SectionName));
+
+builder.Services.AddHttpClient<IPlacesProvider, OverpassPlacesProvider>();
+builder.Services.AddHttpClient<IGeocodingProvider, NominatimGeocodingProvider>();
+
 builder.Services.AddScoped<INotesService, NotesService>();
 builder.Services.AddScoped<ITasksService, TasksService>();
+builder.Services.AddScoped<ILocationsService, LocationsService>();
 
 WebApplication app = builder.Build();
 
