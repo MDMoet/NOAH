@@ -18,6 +18,8 @@ builder.Services.AddDbContext<NoahDbContext>(options =>
 
 builder.Services.Configure<OpenStreetMapModel>(
     builder.Configuration.GetSection(OpenStreetMapModel.SectionName));
+builder.Services.Configure<PlanningModel>(
+    builder.Configuration.GetSection(PlanningModel.SectionName));
 
 builder.Services.AddHttpClient<IPlacesProvider, OverpassPlacesProvider>();
 builder.Services.AddHttpClient<IGeocodingProvider, NominatimGeocodingProvider>();
@@ -26,6 +28,7 @@ builder.Services.AddScoped<INotesService, NotesService>();
 builder.Services.AddScoped<ITasksService, TasksService>();
 builder.Services.AddScoped<ILocationsService, LocationsService>();
 builder.Services.AddScoped<IRemindersService, RemindersService>();
+builder.Services.AddScoped<IPlanningService, PlanningService>();
 
 WebApplication app = builder.Build();
 
