@@ -37,13 +37,12 @@ public sealed record UpdateMileageEntryRequest(
     GeoCoordinateDto? Location,
     string? Notes);
 
-public sealed record ProcessMileagePhotoRequest(
-    string ImageContentBase64,
-    string MimeType,
-    DateTimeOffset CapturedAtUtc,
-    GeoCoordinateDto? Location);
-
-public sealed record ProcessMileagePhotoResponse(
-    string RecognizedText,
-    decimal? OdometerReadingKm,
-    double? Confidence);
+public sealed record MileageSummaryDto(
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc,
+    int EntryCount,
+    decimal? FirstOdometerReadingKm,
+    decimal? LastOdometerReadingKm,
+    decimal TotalTripDistanceKm,
+    decimal? EstimatedDistanceKm,
+    decimal? AverageTripDistanceKm);
