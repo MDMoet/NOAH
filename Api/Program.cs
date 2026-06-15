@@ -30,6 +30,7 @@ builder.Services.AddScoped<ILocationsService, LocationsService>();
 builder.Services.AddScoped<IRemindersService, RemindersService>();
 builder.Services.AddScoped<IPlanningService, PlanningService>();
 builder.Services.AddScoped<IMileageService, MileageService>();
+builder.Services.AddScoped<ISearchService, SearchService>();
 
 WebApplication app = builder.Build();
 
