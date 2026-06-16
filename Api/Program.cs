@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Api.Interfaces;
 using Api.Interfaces.Providers;
 using Api.Options;
@@ -13,7 +14,14 @@ using NOAH.Infrastructure.Persistence;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
+
+builder.Services.AddSingleton(TimeProvider.System);
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -36,6 +44,8 @@ builder.Services.AddScoped<IPlanningService, PlanningService>();
 builder.Services.AddScoped<IMileageService, MileageService>();
 builder.Services.AddScoped<ISearchService, SearchService>();
 builder.Services.AddScoped<IAssistantService, AssistantService>();
+builder.Services.AddScoped<IAssistantPromptBuilder, AssistantPromptBuilder>();
+builder.Services.AddScoped<IAssistantToolService, AssistantToolService>();
 builder.Services.AddScoped<ILlmClient, TestLlmClient>();
 builder.Services.AddScoped<IAssistantInteractionRepository, AssistantInteractionRepository>();
 

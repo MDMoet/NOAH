@@ -15,6 +15,17 @@ public sealed class TestLlmClient : ILlmClient
     /// <returns>A completed task containing the test response text.</returns>
     public Task<string> GenerateResponseAsync(string input, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult($"NOAH received: {input}");
+        return Task.FromResult($"NOAH received: {ExtractUserMessage(input)}");
+    }
+
+    private static string ExtractUserMessage(string input)
+    {
+        const string marker = "User message:";
+
+        int markerIndex = input.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+
+        return markerIndex < 0
+            ? input
+            : input[(markerIndex + marker.Length)..].Trim();
     }
 }

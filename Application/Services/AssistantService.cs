@@ -1,4 +1,6 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
+using Application.Models;
+using Microsoft.Extensions.Logging;
 using NOAH.Contracts.Assistant;
 using NOAH.Contracts.Enums;
 using NOAH.Domain.Entities;
@@ -11,9 +13,19 @@ namespace Application.Services;
 /// </summary>
 public sealed class AssistantService(
     ILlmClient llmClient,
-    IAssistantInteractionRepository assistantInteractionRepository)
+    IAssistantInteractionRepository assistantInteractionRepository,
+    IAssistantPromptBuilder assistantPromptBuilder,
+    IAssistantToolService assistantToolService,
+    TimeProvider timeProvider,
+    ILogger<AssistantService> logger)
     : IAssistantService
 {
+    private const string GenericFailureResponseText =
+        "Something went wrong while processing the assistant request.";
+
+    private const string CancelledResponseText =
+        "The assistant request was cancelled.";
+
     /// <summary>
     /// Processes an assistant command, stores the interaction, and returns the final response.
     /// </summary>
@@ -26,9 +38,18 @@ public sealed class AssistantService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        DateTimeOffset currentDateTimeUtc = DateTimeOffset.UtcNow;
-        string input = request.Input.Trim();
+        string input = request.Input?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            throw new ArgumentException("Input cannot be null or empty.", nameof(request.Input));
+        }
+
+        DateTimeOffset currentDateTimeUtc = timeProvider.GetUtcNow();
         AssistantResponseModeDto responseMode = request.PreferredResponseMode ?? AssistantResponseModeDto.Text;
+        DateTimeOffset requestedAtUtc = request.RequestedAtUtc == default
+            ? currentDateTimeUtc
+            : request.RequestedAtUtc.ToUniversalTime();
 
         AssistantInteraction assistantInteraction = new()
         {
@@ -42,43 +63,109 @@ public sealed class AssistantService(
             RelatedEntityId = null,
             RelatedEntityType = null,
             ErrorMessage = null,
-            RequestedAtUtc = request.RequestedAtUtc.ToUniversalTime(),
+            RequestedAtUtc = requestedAtUtc,
             CompletedAtUtc = null,
             CreatedAtUtc = currentDateTimeUtc,
             UpdatedAtUtc = null
         };
 
-        // Store the received interaction before calling the LLM so failed requests remain traceable.
+        logger.LogInformation(
+            "Processing assistant request {InteractionId} with input mode {InputMode}.",
+            assistantInteraction.Id,
+            request.InputMode);
+
+        // Store the received interaction before calling tools or the LLM so failed requests remain traceable.
         await assistantInteractionRepository.AddAsync(assistantInteraction, cancellationToken);
 
         try
         {
-            string responseText = await llmClient.GenerateResponseAsync(input, cancellationToken);
+            AssistantToolActionResult toolActionResult = await assistantToolService.TryExecuteAsync(
+                new AssistantToolActionRequest(request with { Input = input, RequestedAtUtc = requestedAtUtc }, assistantInteraction.Id),
+                cancellationToken);
 
-            assistantInteraction.AssistantResponse = responseText;
+            if (toolActionResult.WasHandled)
+            {
+                assistantInteraction.ActionType = (AssistantActionType)toolActionResult.ActionType;
+                assistantInteraction.AssistantResponse = NormalizeResponseText(toolActionResult.ResponseText);
+                assistantInteraction.RelatedEntityId = toolActionResult.RelatedEntityId;
+                assistantInteraction.RelatedEntityType = toolActionResult.RelatedEntityType;
+                assistantInteraction.Status = AssistantInteractionStatus.Completed;
+                assistantInteraction.CompletedAtUtc = timeProvider.GetUtcNow();
+                assistantInteraction.UpdatedAtUtc = assistantInteraction.CompletedAtUtc;
+
+                await assistantInteractionRepository.UpdateAsync(assistantInteraction, cancellationToken);
+
+                logger.LogInformation(
+                    "Assistant request {InteractionId} was handled by tool action {ActionType}.",
+                    assistantInteraction.Id,
+                    toolActionResult.ActionType);
+
+                return MapToResponse(assistantInteraction);
+            }
+
+            AssistantPromptContext promptContext =
+                await assistantToolService.BuildContextAsync(
+                    request with { Input = input, RequestedAtUtc = requestedAtUtc },
+                    cancellationToken);
+            string prompt = assistantPromptBuilder.BuildPrompt(request with { Input = input, RequestedAtUtc = requestedAtUtc }, promptContext);
+
+            logger.LogInformation(
+                "Assistant request {InteractionId} fell back to LLM processing with {SearchResultCount} contextual search result(s).",
+                assistantInteraction.Id,
+                promptContext.SearchResults.Count);
+
+            string responseText = await llmClient.GenerateResponseAsync(prompt, cancellationToken);
+
+            assistantInteraction.AssistantResponse = NormalizeResponseText(responseText);
             assistantInteraction.Status = AssistantInteractionStatus.Completed;
-            assistantInteraction.CompletedAtUtc = DateTimeOffset.UtcNow;
+            assistantInteraction.CompletedAtUtc = timeProvider.GetUtcNow();
             assistantInteraction.UpdatedAtUtc = assistantInteraction.CompletedAtUtc;
 
             await assistantInteractionRepository.UpdateAsync(assistantInteraction, cancellationToken);
 
+            logger.LogInformation(
+                "Assistant request {InteractionId} completed through the LLM path.",
+                assistantInteraction.Id);
+
             return MapToResponse(assistantInteraction);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
-            throw;
+            DateTimeOffset cancelledAtUtc = timeProvider.GetUtcNow();
+
+            assistantInteraction.Status = AssistantInteractionStatus.Cancelled;
+            assistantInteraction.ErrorMessage = "The assistant request was cancelled.";
+            assistantInteraction.AssistantResponse = CancelledResponseText;
+            assistantInteraction.CompletedAtUtc = cancelledAtUtc;
+            assistantInteraction.UpdatedAtUtc = cancelledAtUtc;
+
+            await TryPersistTerminalStateAsync(assistantInteraction);
+
+            logger.LogWarning(
+                exception,
+                "Assistant request {InteractionId} was cancelled while processing input: {Input}",
+                assistantInteraction.Id,
+                input);
+
+            return MapToResponse(assistantInteraction);
         }
         catch (Exception exception)
         {
-            DateTimeOffset failedAtUtc = DateTimeOffset.UtcNow;
+            DateTimeOffset failedAtUtc = timeProvider.GetUtcNow();
 
             assistantInteraction.Status = AssistantInteractionStatus.Failed;
             assistantInteraction.ErrorMessage = exception.Message;
-            assistantInteraction.AssistantResponse = "Something went wrong while processing the assistant request.";
+            assistantInteraction.AssistantResponse = GenericFailureResponseText;
             assistantInteraction.CompletedAtUtc = failedAtUtc;
             assistantInteraction.UpdatedAtUtc = failedAtUtc;
 
-            await assistantInteractionRepository.UpdateAsync(assistantInteraction, cancellationToken);
+            await TryPersistTerminalStateAsync(assistantInteraction);
+
+            logger.LogError(
+                exception,
+                "Error processing assistant request {InteractionId}: {Input}",
+                assistantInteraction.Id,
+                input);
 
             return MapToResponse(assistantInteraction);
         }
@@ -95,9 +182,33 @@ public sealed class AssistantService(
             assistantInteraction.Id,
             (AssistantActionTypeDto)assistantInteraction.ActionType,
             (AssistantInteractionStatusDto)assistantInteraction.Status,
-            assistantInteraction.AssistantResponse ?? string.Empty,
+            NormalizeResponseText(assistantInteraction.AssistantResponse),
             (AssistantResponseModeDto)assistantInteraction.ResponseMode,
             assistantInteraction.RelatedEntityId,
             assistantInteraction.RelatedEntityType);
+    }
+
+    private static string NormalizeResponseText(string? responseText)
+    {
+        return string.IsNullOrWhiteSpace(responseText)
+            ? string.Empty
+            : responseText.Trim();
+    }
+
+    private async Task TryPersistTerminalStateAsync(AssistantInteraction assistantInteraction)
+    {
+        try
+        {
+            await assistantInteractionRepository.UpdateAsync(
+                assistantInteraction,
+                CancellationToken.None);
+        }
+        catch (Exception persistenceException)
+        {
+            logger.LogWarning(
+                persistenceException,
+                "Failed to persist terminal assistant interaction state for {InteractionId}.",
+                assistantInteraction.Id);
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NOAH.Contracts.Assistant;
@@ -11,7 +11,7 @@ namespace NOAH.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class AssistantController(IAssistantService assistantService,ILogger<AssistantController> logger)
+public sealed class AssistantController(IAssistantService assistantService, ILogger<AssistantController> logger)
     : ControllerBase
 {
     /// <summary>
@@ -21,7 +21,7 @@ public class AssistantController(IAssistantService assistantService,ILogger<Assi
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>The assistant response and interaction metadata.</returns>
     [HttpPost("message")]
-    public async Task<ActionResult<AssistantCommandResponse>> CreateNoteAsync(
+    public async Task<ActionResult<AssistantCommandResponse>> ProcessMessageAsync(
         [FromBody] AssistantCommandRequest? request,
         CancellationToken cancellationToken)
     {
@@ -32,7 +32,7 @@ public class AssistantController(IAssistantService assistantService,ILogger<Assi
             return ValidationProblem(ToModelStateDictionary(validationErrors));
         }
 
-        AssistantCommandResponse assistantCommandResponse = 
+        AssistantCommandResponse assistantCommandResponse =
             await assistantService.ProcessMessageAsync(request!, cancellationToken);
 
         logger.LogInformation("Processed message with interaction id {InteractionId}.", assistantCommandResponse.InteractionId);
@@ -60,9 +60,14 @@ public class AssistantController(IAssistantService assistantService,ILogger<Assi
             validationErrors[nameof(request.Input)] = ["Input is required."];
         }
 
-        if (request.PreferredResponseMode == null)
+        if (!Enum.IsDefined(request.InputMode))
         {
-            validationErrors[nameof(request.InputMode)] = ["Preferred response is required."];
+            validationErrors[nameof(request.InputMode)] = ["Input mode is invalid."];
+        }
+
+        if (request.PreferredResponseMode.HasValue && !Enum.IsDefined(request.PreferredResponseMode.Value))
+        {
+            validationErrors[nameof(request.PreferredResponseMode)] = ["Preferred response mode is invalid."];
         }
 
         return validationErrors;
