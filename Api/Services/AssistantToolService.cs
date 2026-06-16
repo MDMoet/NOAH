@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Api.Interfaces;
 using Application.Interfaces;
 using Application.Models;
+using Microsoft.Extensions.Logging;
 using NOAH.Contracts.Assistant;
 using NOAH.Contracts.Common;
 using NOAH.Contracts.Enums;
@@ -28,7 +30,8 @@ public sealed class AssistantToolService(
     ILocationsService locationsService,
     IMileageService mileageService,
     IPlanningService planningService,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<AssistantToolService> logger)
     : IAssistantToolService
 {
     private const int ContextSearchResultLimit = 5;
@@ -49,13 +52,12 @@ public sealed class AssistantToolService(
     private static readonly string[] SearchPrefixes =
     [
         "what do i have about",
-        "show me",
         "search for",
         "search",
-        "find me",
-        "find",
-        "look up",
-        "lookup"
+        "search my",
+        "find my",
+        "show my",
+        "show me my"
     ];
 
     private static readonly string[] NotePrefixes =
@@ -64,8 +66,12 @@ public sealed class AssistantToolService(
         "create note",
         "add a note",
         "add note",
+        "make a note",
+        "write a note",
         "save a note",
         "save note",
+        "note down",
+        "note",
         "note:"
     ];
 
@@ -177,97 +183,156 @@ public sealed class AssistantToolService(
         AssistantCommandRequest request,
         CancellationToken cancellationToken = default)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        bool shouldSearchForContext = ShouldSearchForContext(request.Input);
         IReadOnlyList<AssistantContextSearchResult> searchResults =
-            ShouldSearchForContext(request.Input)
+            shouldSearchForContext
                 ? await SearchContextAsync(request.Input, ContextSearchResultLimit, cancellationToken)
                 : Array.Empty<AssistantContextSearchResult>();
 
-        return new AssistantPromptContext(
-            timeProvider.GetUtcNow(),
-            request.CurrentLocation,
-            searchResults);
+        AssistantPromptContext promptContext = new()
+        {
+            CurrentDateTimeUtc = timeProvider.GetUtcNow(),
+            CurrentLocation = request.CurrentLocation,
+            SearchResults = searchResults
+        };
+
+        logger.LogInformation(
+            "Built assistant tool context in {ElapsedMs} ms. Included search: {IncludedSearch}. Search results: {SearchResultCount}. Has current location: {HasCurrentLocation}.",
+            GetElapsedMilliseconds(stopwatch),
+            shouldSearchForContext,
+            searchResults.Count,
+            request.CurrentLocation != null);
+
+        return promptContext;
     }
 
     /// <summary>
-    /// Attempts to execute a concrete NOAH tool action for the user message.
+    /// Attempts to execute a direct NOAH utility action for the user message.
     /// </summary>
     /// <param name="request">The action request containing the command and interaction id.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    /// <returns>The action result, or a not-handled result when the LLM should answer instead.</returns>
+    /// <returns>The action result, or a not-handled result when semantic planning or normal LLM answering should continue.</returns>
     public async Task<AssistantToolActionResult> TryExecuteAsync(
         AssistantToolActionRequest request,
         CancellationToken cancellationToken = default)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         string input = request.Command.Input.Trim();
+        string routeName = "NotHandled";
+        AssistantToolActionResult result = AssistantToolActionResult.NotHandled;
 
         if (TryGetCommandText(input, ReverseGeocodePrefixes, out string reverseGeocodeText))
         {
-            return await ReverseGeocodeAsync(reverseGeocodeText, request.Command.CurrentLocation, cancellationToken);
+            routeName = "ReverseGeocode";
+            result = await ReverseGeocodeAsync(reverseGeocodeText, request.Command.CurrentLocation, cancellationToken);
         }
-
-        if (TryGetCommandText(input, GeocodePrefixes, out string geocodeQuery))
+        else if (TryGetCommandText(input, GeocodePrefixes, out string geocodeQuery))
         {
-            return await GeocodeAsync(geocodeQuery, cancellationToken);
+            routeName = "Geocode";
+            result = await GeocodeAsync(geocodeQuery, cancellationToken);
         }
-
-        if (TryGetCommandText(input, NearbyPlacesPrefixes, out string nearbyQuery))
+        else if (TryGetCommandText(input, NearbyPlacesPrefixes, out string nearbyQuery))
         {
-            return await FindNearbyPlacesAsync(nearbyQuery, request.Command.CurrentLocation, cancellationToken);
+            routeName = "FindNearbyPlaces";
+            result = await FindNearbyPlacesAsync(nearbyQuery, request.Command.CurrentLocation, cancellationToken);
         }
-
-        if (TryGetCommandText(input, DistancePrefixes, out string distanceText))
+        else if (TryGetCommandText(input, DistancePrefixes, out string distanceText))
         {
-            return CalculateDistance(distanceText, request.Command.CurrentLocation);
+            routeName = "CalculateDistance";
+            result = CalculateDistance(distanceText, request.Command.CurrentLocation);
         }
-
-        if (TryGetCommandText(input, SaveLocationPrefixes, out string locationText))
+        else if (TryGetCommandText(input, SaveLocationPrefixes, out string locationText))
         {
-            return await SaveLocationAsync(locationText, request.Command.CurrentLocation, cancellationToken);
+            routeName = "SaveLocation";
+            result = await SaveLocationAsync(locationText, request.Command.CurrentLocation, cancellationToken);
         }
-
-        if (TryGetCommandText(input, MileagePrefixes, out string mileageText))
+        else if (TryGetCommandText(input, MileagePrefixes, out string mileageText))
         {
-            return await CreateMileageEntryAsync(mileageText, request.Command.CurrentLocation, cancellationToken);
+            routeName = "CreateMileageEntry";
+            result = await CreateMileageEntryAsync(mileageText, request.Command.CurrentLocation, cancellationToken);
         }
-
-        if (StartsWithAny(input, PlanningPrefixes))
+        else if (StartsWithAny(input, PlanningPrefixes))
         {
-            return await ShowPlanningAsync(input, cancellationToken);
+            routeName = "ShowPlanning";
+            result = await ShowPlanningAsync(input, cancellationToken);
         }
-
-        if (TryGetCommandText(input, CalculatePrefixes, out string expression))
+        else if (TryGetCommandText(input, CalculatePrefixes, out string expression))
         {
             AssistantToolActionResult calculationResult = CalculateValue(expression);
 
             if (calculationResult.WasHandled)
             {
-                return calculationResult;
+                routeName = "CalculateValue";
+                result = calculationResult;
             }
         }
-
-        if (TryGetCommandText(input, SearchPrefixes, out string searchQuery))
+        else if (TryGetCommandText(input, SearchPrefixes, out string searchQuery))
         {
-            return await SearchAsync(searchQuery, cancellationToken);
+            routeName = "Search";
+            result = await SearchAsync(searchQuery, cancellationToken);
+        }
+        // Content-creation commands are intentionally deferred to the structured planner so the
+        // assistant can generate better titles, bodies, and reminder/task metadata semantically.
+        else if (TryGetCommandText(input, NotePrefixes, out _))
+        {
+            routeName = "DeferredNoteToStructuredPlanner";
+        }
+        else if (TryGetCommandText(input, TaskPrefixes, out _))
+        {
+            routeName = "DeferredTaskToStructuredPlanner";
+        }
+        else if (TryGetCommandText(input, ReminderPrefixes, out _))
+        {
+            routeName = "DeferredReminderToStructuredPlanner";
         }
 
-        if (TryGetCommandText(input, NotePrefixes, out string noteText))
-        {
-            return await CreateNoteAsync(noteText, request, cancellationToken);
-        }
+        logger.LogInformation(
+            "Deterministic assistant tool routing completed in {ElapsedMs} ms. Route: {RouteName}. Handled: {WasHandled}. Action: {ActionType}.",
+            GetElapsedMilliseconds(stopwatch),
+            routeName,
+            result.WasHandled,
+            result.ActionType);
 
-        if (TryGetCommandText(input, TaskPrefixes, out string taskText))
-        {
-            return await CreateTaskAsync(taskText, cancellationToken);
-        }
-
-        if (TryGetCommandText(input, ReminderPrefixes, out string reminderText))
-        {
-            return await CreateReminderAsync(reminderText, request.Command.RequestedAtUtc, cancellationToken);
-        }
-
-        return AssistantToolActionResult.NotHandled;
+        return result;
     }
 
+    /// <summary>
+    /// Executes a structured tool plan produced by the LLM.
+    /// </summary>
+    /// <param name="request">The structured action request.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The action result, or a not-handled result when the plan is incomplete.</returns>
+    public async Task<AssistantToolActionResult> ExecutePlannedActionAsync(
+        AssistantPlannedToolActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        AssistantToolActionResult result = request.Action.ActionType switch
+        {
+            AssistantActionTypeDto.CreateNote => await ExecutePlannedNoteAsync(request, cancellationToken),
+            AssistantActionTypeDto.CreateTask => await ExecutePlannedTaskAsync(request, cancellationToken),
+            AssistantActionTypeDto.CreateReminder => await ExecutePlannedReminderAsync(request, cancellationToken),
+            AssistantActionTypeDto.Search => await SearchAsync(
+                request.Action.Query ?? request.Action.Title ?? request.Command.Input,
+                cancellationToken),
+            AssistantActionTypeDto.ShowDayPlan => await ExecutePlannedDayPlanAsync(request, cancellationToken),
+            _ => AssistantToolActionResult.NotHandled
+        };
+
+        logger.LogInformation(
+            "Structured assistant tool action {RequestedActionType} completed in {ElapsedMs} ms. Handled: {WasHandled}. Result action: {ResultActionType}.",
+            request.Action.ActionType,
+            GetElapsedMilliseconds(stopwatch),
+            result.WasHandled,
+            result.ActionType);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Searches persisted NOAH data for assistant-facing lookup requests.
+    /// </summary>
     private async Task<AssistantToolActionResult> SearchAsync(
         string query,
         CancellationToken cancellationToken)
@@ -295,87 +360,154 @@ public sealed class AssistantToolService(
             searchResults: searchResults);
     }
 
-    private async Task<AssistantToolActionResult> CreateNoteAsync(
-        string noteText,
-        AssistantToolActionRequest actionRequest,
+    /// <summary>
+    /// Creates a note from a structured assistant plan.
+    /// </summary>
+    private async Task<AssistantToolActionResult> ExecutePlannedNoteAsync(
+        AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
     {
-        string content = NormalizeCommandBody(noteText);
+        string content = NormalizeCommandBody(request.Action.Description ?? request.Action.Title ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(content))
         {
             return AssistantToolActionResult.NotHandled;
         }
 
-        string title = CreateTitle(content, "New note");
+        string title = string.IsNullOrWhiteSpace(request.Action.Title)
+            ? CreateTitle(content, "New note")
+            : request.Action.Title.Trim();
         NoteDto note = await notesService.CreateNoteAsync(
             new CreateNoteRequest(
                 title,
                 content,
-                actionRequest.Command.InputMode == AssistantInputModeDto.Voice,
-                actionRequest.InteractionId),
+                request.Command.InputMode == AssistantInputModeDto.Voice,
+                request.InteractionId),
             cancellationToken);
 
         return Handled(
             AssistantActionTypeDto.CreateNote,
-            $"Created note \"{note.Title}\".",
+            string.IsNullOrWhiteSpace(request.Action.ResponseText)
+                ? $"Created note \"{note.Title}\"."
+                : request.Action.ResponseText,
             note.Id,
             "Note");
     }
 
-    private async Task<AssistantToolActionResult> CreateTaskAsync(
-        string taskText,
+    /// <summary>
+    /// Creates a task, and optionally a linked reminder, from a structured assistant plan.
+    /// </summary>
+    private async Task<AssistantToolActionResult> ExecutePlannedTaskAsync(
+        AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
     {
-        string title = NormalizeCommandBody(taskText);
+        string title = NormalizeCommandBody(request.Action.Title ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(title))
         {
             return AssistantToolActionResult.NotHandled;
         }
 
-        TaskPriorityDto priority = ParseTaskPriority(title);
-        DateTimeOffset? dueAtUtc = ParseLooseDueDate(title);
+        DateTimeOffset? dueAtUtc = ParsePlannedDateTime(
+            request.Action.ScheduledAt,
+            request.Action.TimeZoneId);
+        DateOnly? plannedFor = dueAtUtc.HasValue
+            ? DateOnly.FromDateTime(dueAtUtc.Value.UtcDateTime)
+            : ParsePlannedDate(request.Action.ScheduledAt, request.Action.TimeZoneId);
+        string? description = BuildPlannedDescription(request.Action.Description, request.Action.EndsAt);
+        TaskPriorityDto priority = request.Action.Priority ?? ParseTaskPriority(title);
 
         TaskItemDto taskItem = await tasksService.CreateTaskItemAsync(
             new CreateTaskItemRequest(
-                CreateTitle(CleanTaskTitle(title), "New task"),
-                null,
+                title,
+                description,
                 priority,
                 dueAtUtc,
-                dueAtUtc.HasValue ? DateOnly.FromDateTime(dueAtUtc.Value.UtcDateTime) : null),
+                plannedFor),
             cancellationToken);
 
-        string dueText = taskItem.DueAtUtc.HasValue
-            ? $" Due at {taskItem.DueAtUtc.Value:u}."
-            : string.Empty;
+        if (!request.Action.CreateLinkedReminder)
+        {
+            string dueText = taskItem.DueAtUtc.HasValue
+                ? $" Due at {taskItem.DueAtUtc.Value:u}."
+                : string.Empty;
+
+            return Handled(
+                AssistantActionTypeDto.CreateTask,
+                string.IsNullOrWhiteSpace(request.Action.ResponseText)
+                    ? $"Created task \"{taskItem.Title}\".{dueText}"
+                    : request.Action.ResponseText,
+                taskItem.Id,
+                "Task");
+        }
+
+        DateTimeOffset reminderAtUtc = ParsePlannedDateTime(
+                request.Action.ReminderAt ?? request.Action.ScheduledAt,
+                request.Action.TimeZoneId)
+            ?? dueAtUtc
+            ?? request.Command.RequestedAtUtc.ToUniversalTime().AddHours(1);
+        string reminderTitle = NormalizeCommandBody(request.Action.ReminderTitle ?? taskItem.Title);
+        string reminderMessage = NormalizeCommandBody(
+            request.Action.ReminderMessage ??
+            description ??
+            taskItem.Title);
+
+        ReminderDto reminder = await remindersService.CreateReminderAsync(
+            new CreateReminderRequest(
+                string.IsNullOrWhiteSpace(reminderTitle) ? taskItem.Title : reminderTitle,
+                string.IsNullOrWhiteSpace(reminderMessage) ? taskItem.Title : reminderMessage,
+                ReminderTriggerTypeDto.Time,
+                true,
+                reminderAtUtc,
+                null,
+                null,
+                taskItem.Id,
+                null,
+                null),
+            cancellationToken);
 
         return Handled(
             AssistantActionTypeDto.CreateTask,
-            $"Created task \"{taskItem.Title}\".{dueText}",
+            string.IsNullOrWhiteSpace(request.Action.ResponseText)
+                ? $"Created task \"{taskItem.Title}\" and linked reminder \"{reminder.Title}\" for {reminderAtUtc:u}."
+                : request.Action.ResponseText,
             taskItem.Id,
             "Task");
     }
 
-    private async Task<AssistantToolActionResult> CreateReminderAsync(
-        string reminderText,
-        DateTimeOffset requestedAtUtc,
+    /// <summary>
+    /// Creates a reminder from a structured assistant plan.
+    /// </summary>
+    private async Task<AssistantToolActionResult> ExecutePlannedReminderAsync(
+        AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
     {
-        string body = NormalizeCommandBody(reminderText);
+        string title = NormalizeCommandBody(request.Action.ReminderTitle ?? request.Action.Title ?? string.Empty);
+        string message = NormalizeCommandBody(
+            request.Action.ReminderMessage ??
+            request.Action.Description ??
+            request.Action.Title ??
+            string.Empty);
 
-        if (string.IsNullOrWhiteSpace(body))
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(message))
         {
             return AssistantToolActionResult.NotHandled;
         }
 
-        DateTimeOffset triggerAtUtc = ParseReminderTriggerAtUtc(body, requestedAtUtc.ToUniversalTime());
-        string title = CreateTitle(CleanReminderTitle(body), "New reminder");
+        DateTimeOffset triggerAtUtc = ParsePlannedDateTime(
+                request.Action.ReminderAt ?? request.Action.ScheduledAt,
+                request.Action.TimeZoneId)
+            ?? ParseReminderTriggerAtUtc(
+                message,
+                request.Command.RequestedAtUtc.ToUniversalTime());
+        string normalizedTitle = string.IsNullOrWhiteSpace(title)
+            ? CreateTitle(message, "New reminder")
+            : title;
 
         ReminderDto reminder = await remindersService.CreateReminderAsync(
             new CreateReminderRequest(
-                title,
-                body,
+                normalizedTitle,
+                string.IsNullOrWhiteSpace(message) ? normalizedTitle : message,
                 ReminderTriggerTypeDto.Time,
                 true,
                 triggerAtUtc,
@@ -388,9 +520,37 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.CreateReminder,
-            $"Created reminder \"{reminder.Title}\" for {triggerAtUtc:u}.",
+            string.IsNullOrWhiteSpace(request.Action.ResponseText)
+                ? $"Created reminder \"{reminder.Title}\" for {triggerAtUtc:u}."
+                : request.Action.ResponseText,
             reminder.Id,
             "Reminder");
+    }
+
+    /// <summary>
+    /// Returns planning data from a structured assistant plan.
+    /// </summary>
+    private async Task<AssistantToolActionResult> ExecutePlannedDayPlanAsync(
+        AssistantPlannedToolActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        DateOnly date = ParsePlannedDate(
+                request.Action.ScheduledAt,
+                request.Action.TimeZoneId)
+            ?? ParsePlanDate(request.Command.Input);
+        string timeZoneId = string.IsNullOrWhiteSpace(request.Action.TimeZoneId)
+            ? DefaultTimeZoneId
+            : request.Action.TimeZoneId;
+        DayPlanDto dayPlan = await planningService.GetDayPlanAsync(
+            date,
+            timeZoneId,
+            cancellationToken);
+
+        return Handled(
+            AssistantActionTypeDto.ShowDayPlan,
+            string.IsNullOrWhiteSpace(request.Action.ResponseText)
+                ? BuildDayPlanResponseText(dayPlan)
+                : request.Action.ResponseText);
     }
 
     private async Task<AssistantToolActionResult> SaveLocationAsync(
@@ -684,6 +844,7 @@ public sealed class AssistantToolService(
         CancellationToken cancellationToken,
         IReadOnlyList<SearchResultTypeDto>? types = null)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         AssistantSearchCriteria searchCriteria = types == null
             ? BuildAssistantSearchCriteria(query)
             : new AssistantSearchCriteria(query.Trim(), types);
@@ -698,9 +859,18 @@ public sealed class AssistantToolService(
                 take),
             cancellationToken);
 
-        return searchResponse.Results
+        IReadOnlyList<AssistantContextSearchResult> searchResults = searchResponse.Results
             .Select(MapToContextSearchResult)
             .ToList();
+
+        logger.LogInformation(
+            "Assistant context search completed in {ElapsedMs} ms. Query: {Query}. Types: {SearchTypes}. Results: {ResultCount}.",
+            GetElapsedMilliseconds(stopwatch),
+            searchCriteria.Query,
+            FormatSearchTypes(searchCriteria.Types),
+            searchResults.Count);
+
+        return searchResults;
     }
 
     private static AssistantContextSearchResult MapToContextSearchResult(SearchResultDto searchResult)
@@ -715,7 +885,7 @@ public sealed class AssistantToolService(
 
     private static bool ShouldSearchForContext(string input)
     {
-        string normalizedInput = input.Trim();
+        string normalizedInput = NormalizeCommandInput(input);
 
         return normalizedInput.Length >= 3 &&
                !StartsWithAny(normalizedInput, NotePrefixes) &&
@@ -736,14 +906,16 @@ public sealed class AssistantToolService(
         IReadOnlyList<string> prefixes,
         out string commandText)
     {
+        string normalizedInput = NormalizeCommandInput(input);
+
         foreach (string prefix in prefixes.OrderByDescending(prefix => prefix.Length))
         {
-            if (!input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            if (!HasPrefixMatch(normalizedInput, prefix))
             {
                 continue;
             }
 
-            commandText = NormalizeCommandBody(input[prefix.Length..]);
+            commandText = NormalizeCommandBody(normalizedInput[prefix.Length..]);
             return true;
         }
 
@@ -753,7 +925,24 @@ public sealed class AssistantToolService(
 
     private static bool StartsWithAny(string input, IReadOnlyList<string> prefixes)
     {
-        return prefixes.Any(prefix => input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        string normalizedInput = NormalizeCommandInput(input);
+        return prefixes.Any(prefix => HasPrefixMatch(normalizedInput, prefix));
+    }
+
+    private static bool HasPrefixMatch(string input, string prefix)
+    {
+        if (!input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (input.Length == prefix.Length || !char.IsLetterOrDigit(prefix[^1]))
+        {
+            return true;
+        }
+
+        char nextCharacter = input[prefix.Length];
+        return char.IsWhiteSpace(nextCharacter) || char.IsPunctuation(nextCharacter);
     }
 
     private static AssistantToolActionResult Handled(
@@ -774,7 +963,25 @@ public sealed class AssistantToolService(
 
     private static string NormalizeCommandBody(string value)
     {
-        return value.Trim().TrimStart(':', '-', '.', ' ').Trim();
+        string normalizedValue = value.Trim().TrimStart(':', '-', '.', ' ').Trim();
+        normalizedValue = Regex.Replace(
+            normalizedValue,
+            @"(?:\s*(?:for me|please)[\s!?,.:;]*)+$",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+        return normalizedValue.Trim();
+    }
+
+    private static string NormalizeCommandInput(string value)
+    {
+        string normalizedValue = value.Trim();
+        normalizedValue = Regex.Replace(
+            normalizedValue,
+            @"^\s*(?:(?:hey|hi)\s+noah[\s,:\-]*)?(?:(?:please|can you|could you|would you|will you|can u|could u|would u)\s+)+",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+
+        return normalizedValue.TrimStart(':', '-', '.', ',', ' ').Trim();
     }
 
     private static string BuildSearchResponseText(
@@ -1014,28 +1221,6 @@ public sealed class AssistantToolService(
         return TaskPriorityDto.Normal;
     }
 
-    private DateTimeOffset? ParseLooseDueDate(string value)
-    {
-        DateTimeOffset nowUtc = timeProvider.GetUtcNow();
-
-        if (ContainsAny(value, "tomorrow"))
-        {
-            return new DateTimeOffset(nowUtc.UtcDateTime.Date.AddDays(1).AddHours(9), TimeSpan.Zero);
-        }
-
-        if (ContainsAny(value, "today"))
-        {
-            return nowUtc.AddHours(1);
-        }
-
-        if (ContainsAny(value, "next week"))
-        {
-            return new DateTimeOffset(nowUtc.UtcDateTime.Date.AddDays(7).AddHours(9), TimeSpan.Zero);
-        }
-
-        return null;
-    }
-
     private static DateTimeOffset ParseReminderTriggerAtUtc(
         string value,
         DateTimeOffset requestedAtUtc)
@@ -1067,31 +1252,92 @@ public sealed class AssistantToolService(
         return requestedAtUtc.AddHours(1);
     }
 
-    private static string CleanTaskTitle(string value)
+    private DateTimeOffset? ParsePlannedDateTime(string? value, string? timeZoneId)
     {
-        return Regex.Replace(
-                value,
-                @"\b(today|tomorrow|next week|urgent|important|high priority|low priority|not urgent)\b",
-                string.Empty,
-                RegexOptions.IgnoreCase)
-            .Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        string normalizedValue = value.Trim();
+
+        if (DateTimeOffset.TryParse(
+                normalizedValue,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+                out DateTimeOffset parsedOffsetDateTime))
+        {
+            return parsedOffsetDateTime.ToUniversalTime();
+        }
+
+        if (!DateTime.TryParse(
+                normalizedValue,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out DateTime localDateTime))
+        {
+            return null;
+        }
+
+        TimeZoneInfo timeZone = ResolveTimeZone(timeZoneId);
+        DateTime unspecifiedDateTime = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
+
+        return TimeZoneInfo.ConvertTimeToUtc(unspecifiedDateTime, timeZone);
     }
 
-    private static string CleanReminderTitle(string value)
+    private DateOnly? ParsePlannedDate(string? value, string? timeZoneId)
     {
-        string cleanedValue = Regex.Replace(
-            value,
-            @"\bin\s+\d+\s*(minute|minutes|hour|hours|day|days)\b",
-            string.Empty,
-            RegexOptions.IgnoreCase);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
 
-        cleanedValue = Regex.Replace(
-            cleanedValue,
-            @"\b(today|tomorrow)\b",
-            string.Empty,
-            RegexOptions.IgnoreCase);
+        if (DateOnly.TryParse(value.Trim(), CultureInfo.InvariantCulture, out DateOnly dateOnly))
+        {
+            return dateOnly;
+        }
 
-        return cleanedValue.Trim();
+        DateTimeOffset? parsedDateTimeUtc = ParsePlannedDateTime(value, timeZoneId);
+
+        return parsedDateTimeUtc.HasValue
+            ? DateOnly.FromDateTime(parsedDateTimeUtc.Value.UtcDateTime)
+            : null;
+    }
+
+    private static string? BuildPlannedDescription(string? description, string? endsAt)
+    {
+        string? normalizedDescription = string.IsNullOrWhiteSpace(description)
+            ? null
+            : NormalizeWhitespace(description);
+
+        if (string.IsNullOrWhiteSpace(endsAt))
+        {
+            return normalizedDescription;
+        }
+
+        string endText = $"Ends at {endsAt.Trim()}.";
+
+        return string.IsNullOrWhiteSpace(normalizedDescription)
+            ? endText
+            : $"{normalizedDescription} {endText}";
+    }
+
+    private static TimeZoneInfo ResolveTimeZone(string? timeZoneId)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(timeZoneId)
+                ? TimeZoneInfo.FindSystemTimeZoneById(DefaultTimeZoneId)
+                : TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(DefaultTimeZoneId);
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(DefaultTimeZoneId);
+        }
     }
 
     private DateOnly ParsePlanDate(string value)
@@ -1267,6 +1513,11 @@ public sealed class AssistantToolService(
         return string.Join(
             " ",
             value.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static double GetElapsedMilliseconds(Stopwatch stopwatch)
+    {
+        return Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2);
     }
 
     private sealed record AssistantSearchCriteria(

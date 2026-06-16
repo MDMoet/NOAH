@@ -1,5 +1,7 @@
 ﻿using Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using NOAH.Domain.Entities;
+using NOAH.Domain.Enums;
 using NOAH.Infrastructure.Persistence;
 
 namespace Infrastructure.Repository;
@@ -29,5 +31,35 @@ public sealed class AssistantInteractionRepository(NoahDbContext noahDbContext) 
     {
         noahDbContext.AssistantInteractions.Update(interaction);
         await noahDbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets recent completed assistant interactions for prompt memory.
+    /// </summary>
+    /// <param name="take">The maximum number of interactions to return.</param>
+    /// <param name="excludeInteractionId">An optional interaction id to exclude from the result.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The most recent completed assistant interactions.</returns>
+    public async Task<IReadOnlyList<AssistantInteraction>> GetRecentCompletedAsync(
+        int take,
+        Guid? excludeInteractionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        int normalizedTake = Math.Clamp(take, 1, 20);
+        IQueryable<AssistantInteraction> query = noahDbContext.AssistantInteractions
+            .AsNoTracking()
+            .Where(assistantInteraction =>
+                assistantInteraction.Status == AssistantInteractionStatus.Completed &&
+                assistantInteraction.AssistantResponse != null);
+
+        if (excludeInteractionId.HasValue)
+        {
+            query = query.Where(assistantInteraction => assistantInteraction.Id != excludeInteractionId.Value);
+        }
+
+        return await query
+            .OrderByDescending(assistantInteraction => assistantInteraction.RequestedAtUtc)
+            .Take(normalizedTake)
+            .ToListAsync(cancellationToken);
     }
 }

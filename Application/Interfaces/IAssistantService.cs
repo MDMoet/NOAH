@@ -3,7 +3,7 @@
 namespace Application.Interfaces;
 
 /// <summary>
-/// Coordinates assistant message processing and interaction persistence.
+/// Coordinates assistant message processing, semantic action planning, and interaction persistence.
 /// </summary>
 public interface IAssistantService
 {

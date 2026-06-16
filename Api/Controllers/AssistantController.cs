@@ -25,6 +25,8 @@ public sealed class AssistantController(IAssistantService assistantService, ILog
         [FromBody] AssistantCommandRequest? request,
         CancellationToken cancellationToken)
     {
+        // Keep the controller validation lightweight so the richer assistant pipeline can assume
+        // basic request shape is valid before it starts persistence and model work.
         Dictionary<string, string[]> validationErrors = ValidateAssistantCommand(request);
 
         if (validationErrors.Count > 0)

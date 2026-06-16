@@ -4,7 +4,7 @@ using NOAH.Contracts.Assistant;
 namespace Application.Interfaces;
 
 /// <summary>
-/// Builds prompts for the configured language model.
+/// Builds free-form prompts for the configured language model.
 /// </summary>
 public interface IAssistantPromptBuilder
 {
