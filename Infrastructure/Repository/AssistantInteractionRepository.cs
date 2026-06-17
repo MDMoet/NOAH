@@ -40,7 +40,8 @@ public sealed class AssistantInteractionRepository(NoahDbContext noahDbContext) 
     /// <param name="excludeInteractionId">An optional interaction id to exclude from the result.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>The most recent completed assistant interactions.</returns>
-    public async Task<IReadOnlyList<AssistantInteraction>> GetRecentCompletedAsync(
+    public async Task<IReadOnlyList<AssistantInteraction>> GetRecentCompletedForScopeAsync(
+        Guid? chatId,
         int take,
         Guid? excludeInteractionId = null,
         CancellationToken cancellationToken = default)
@@ -51,6 +52,10 @@ public sealed class AssistantInteractionRepository(NoahDbContext noahDbContext) 
             .Where(assistantInteraction =>
                 assistantInteraction.Status == AssistantInteractionStatus.Completed &&
                 assistantInteraction.AssistantResponse != null);
+
+        query = chatId.HasValue
+            ? query.Where(assistantInteraction => assistantInteraction.ChatId == chatId.Value)
+            : query.Where(assistantInteraction => assistantInteraction.ChatId == null);
 
         if (excludeInteractionId.HasValue)
         {

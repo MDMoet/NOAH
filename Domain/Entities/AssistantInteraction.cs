@@ -5,6 +5,8 @@ namespace NOAH.Domain.Entities;
 
 public sealed class AssistantInteraction : TrackedEntity
 {
+    public Guid? ChatId { get; set; }
+
     public string UserInput { get; set; } = string.Empty;
 
     public AssistantInputMode InputMode { get; set; }
@@ -26,4 +28,6 @@ public sealed class AssistantInteraction : TrackedEntity
     public DateTimeOffset RequestedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? CompletedAtUtc { get; set; }
+
+    public AssistantChat? Chat { get; set; }
 }

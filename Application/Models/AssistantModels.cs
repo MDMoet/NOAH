@@ -30,6 +30,25 @@ public sealed record AssistantConversationMemoryEntry(
     DateTimeOffset RequestedAtUtc);
 
 /// <summary>
+/// Represents one persisted long-term memory item that can be surfaced to the assistant.
+/// </summary>
+public sealed record AssistantLongTermMemoryEntry(
+    Guid MemoryId,
+    string Title,
+    string Content,
+    string? Tags,
+    bool IsPinned,
+    DateTimeOffset CreatedAtUtc);
+
+/// <summary>
+/// Represents the active chat thread used to scope conversation continuity.
+/// </summary>
+public sealed record AssistantChatPromptInfo(
+    Guid ChatId,
+    string Title,
+    string? Description);
+
+/// <summary>
 /// Contains contextual information used to build the assistant prompt.
 /// </summary>
 public sealed record AssistantPromptContext
@@ -45,6 +64,11 @@ public sealed record AssistantPromptContext
     public GeoCoordinateDto? CurrentLocation { get; init; }
 
     /// <summary>
+    /// The active chat thread when the request belongs to a named conversation.
+    /// </summary>
+    public AssistantChatPromptInfo? Chat { get; init; }
+
+    /// <summary>
     /// Relevant NOAH search results for the user's message.
     /// </summary>
     public IReadOnlyList<AssistantContextSearchResult> SearchResults { get; init; } =
@@ -55,6 +79,12 @@ public sealed record AssistantPromptContext
     /// </summary>
     public IReadOnlyList<AssistantConversationMemoryEntry> ConversationMemory { get; init; } =
         Array.Empty<AssistantConversationMemoryEntry>();
+
+    /// <summary>
+    /// Durable user facts and preferences that can help future responses.
+    /// </summary>
+    public IReadOnlyList<AssistantLongTermMemoryEntry> LongTermMemory { get; init; } =
+        Array.Empty<AssistantLongTermMemoryEntry>();
 }
 
 /// <summary>
@@ -102,11 +132,13 @@ public sealed record AssistantPlannedToolAction(
     AssistantActionTypeDto ActionType,
     string? Title,
     string? Description,
+    string? Tags,
     string? Query,
     string? ScheduledAt,
     string? EndsAt,
     string? TimeZoneId,
     TaskPriorityDto? Priority,
+    bool IsPinned,
     bool CreateLinkedReminder,
     string? ReminderAt,
     string? ReminderTitle,

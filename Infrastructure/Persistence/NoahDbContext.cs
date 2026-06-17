@@ -20,6 +20,8 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
             value => value.HasValue ? Convert.ToDouble(value.Value) : null);
 
     public DbSet<AssistantInteraction> AssistantInteractions => Set<AssistantInteraction>();
+    public DbSet<AssistantChat> AssistantChats => Set<AssistantChat>();
+    public DbSet<AssistantMemoryItem> AssistantMemoryItems => Set<AssistantMemoryItem>();
     public DbSet<AssistantSettings> AssistantSettings => Set<AssistantSettings>();
     public DbSet<MileageEntry> MileageEntries => Set<MileageEntry>();
     public DbSet<Note> Notes => Set<Note>();
@@ -32,6 +34,8 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
         base.OnModelCreating(modelBuilder);
 
         ConfigureAssistantInteraction(modelBuilder.Entity<AssistantInteraction>());
+        ConfigureAssistantChat(modelBuilder.Entity<AssistantChat>());
+        ConfigureAssistantMemoryItem(modelBuilder.Entity<AssistantMemoryItem>());
         ConfigureAssistantSettings(modelBuilder.Entity<AssistantSettings>());
         ConfigureMileageEntry(modelBuilder.Entity<MileageEntry>());
         ConfigureNote(modelBuilder.Entity<Note>());
@@ -44,6 +48,9 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
     {
         entity.ToTable("AssistantInteractions");
         ConfigureTrackedEntity(entity);
+
+        entity.Property(assistantInteraction => assistantInteraction.ChatId)
+            .IsRequired(false);
 
         entity.Property(assistantInteraction => assistantInteraction.UserInput)
             .IsRequired();
@@ -63,8 +70,20 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
         entity.Property(assistantInteraction => assistantInteraction.CompletedAtUtc)
             .IsRequired(false);
 
+        entity.HasOne(assistantInteraction => assistantInteraction.Chat)
+            .WithMany(assistantChat => assistantChat.Interactions)
+            .HasForeignKey(assistantInteraction => assistantInteraction.ChatId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         entity.HasIndex(assistantInteraction => assistantInteraction.RequestedAtUtc)
             .HasDatabaseName("IX_AssistantInteractions_RequestedAtUtc");
+
+        entity.HasIndex(assistantInteraction => new
+            {
+                assistantInteraction.ChatId,
+                assistantInteraction.RequestedAtUtc
+            })
+            .HasDatabaseName("IX_AssistantInteractions_ChatId_RequestedAtUtc");
 
         entity.HasIndex(assistantInteraction => new
             {
@@ -72,6 +91,62 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
                 assistantInteraction.RelatedEntityId
             })
             .HasDatabaseName("IX_AssistantInteractions_RelatedEntity");
+    }
+
+    private static void ConfigureAssistantChat(EntityTypeBuilder<AssistantChat> entity)
+    {
+        entity.ToTable("AssistantChats");
+        ConfigureTrackedEntity(entity);
+
+        entity.Property(assistantChat => assistantChat.Title)
+            .IsRequired()
+            .HasMaxLength(200);
+
+        entity.Property(assistantChat => assistantChat.Description)
+            .HasMaxLength(1000);
+
+        entity.Property(assistantChat => assistantChat.LastMessagePreview)
+            .HasMaxLength(300);
+
+        entity.Property(assistantChat => assistantChat.LastMessageAtUtc)
+            .IsRequired(false);
+
+        entity.HasIndex(assistantChat => assistantChat.LastMessageAtUtc)
+            .HasDatabaseName("IX_AssistantChats_LastMessageAtUtc");
+    }
+
+    private static void ConfigureAssistantMemoryItem(EntityTypeBuilder<AssistantMemoryItem> entity)
+    {
+        entity.ToTable("AssistantMemoryItems");
+        ConfigureTrackedEntity(entity);
+
+        entity.Property(assistantMemoryItem => assistantMemoryItem.Title)
+            .IsRequired()
+            .HasMaxLength(200);
+
+        entity.Property(assistantMemoryItem => assistantMemoryItem.Content)
+            .IsRequired()
+            .HasMaxLength(4000);
+
+        entity.Property(assistantMemoryItem => assistantMemoryItem.Tags)
+            .HasMaxLength(500);
+
+        entity.HasOne(assistantMemoryItem => assistantMemoryItem.SourceInteraction)
+            .WithMany()
+            .HasForeignKey(assistantMemoryItem => assistantMemoryItem.SourceInteractionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        entity.HasOne(assistantMemoryItem => assistantMemoryItem.SourceChat)
+            .WithMany(assistantChat => assistantChat.MemoryItems)
+            .HasForeignKey(assistantMemoryItem => assistantMemoryItem.SourceChatId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        entity.HasIndex(assistantMemoryItem => new
+            {
+                assistantMemoryItem.IsPinned,
+                assistantMemoryItem.UpdatedAtUtc
+            })
+            .HasDatabaseName("IX_AssistantMemoryItems_IsPinned_UpdatedAtUtc");
     }
 
     private static void ConfigureAssistantSettings(EntityTypeBuilder<AssistantSettings> entity)
@@ -82,6 +157,12 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
         entity.Property(assistantSettings => assistantSettings.SpeechCulture)
             .IsRequired()
             .HasMaxLength(20);
+
+        entity.Property(assistantSettings => assistantSettings.ConversationMemoryMessageCount)
+            .IsRequired();
+
+        entity.Property(assistantSettings => assistantSettings.LongTermMemoryItemCount)
+            .IsRequired();
     }
 
     private static void ConfigureTaskItem(EntityTypeBuilder<TaskItem> entity)

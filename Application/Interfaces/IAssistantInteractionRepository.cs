@@ -28,7 +28,8 @@ public interface IAssistantInteractionRepository
     /// <param name="excludeInteractionId">An optional interaction id to exclude from the result.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>The most recent completed assistant interactions.</returns>
-    Task<IReadOnlyList<AssistantInteraction>> GetRecentCompletedAsync(
+    Task<IReadOnlyList<AssistantInteraction>> GetRecentCompletedForScopeAsync(
+        Guid? chatId,
         int take,
         Guid? excludeInteractionId = null,
         CancellationToken cancellationToken = default);

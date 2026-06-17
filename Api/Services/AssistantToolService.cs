@@ -27,6 +27,7 @@ public sealed class AssistantToolService(
     INotesService notesService,
     ITasksService tasksService,
     IRemindersService remindersService,
+    IAssistantMemoryService assistantMemoryService,
     ILocationsService locationsService,
     IMileageService mileageService,
     IPlanningService planningService,
@@ -59,6 +60,10 @@ public sealed class AssistantToolService(
         "show my",
         "show me my"
     ];
+
+    private static readonly Regex MemoryRecallIntentRegex = new(
+        @"^(?:what\s+(?:preference|preferences)\b.*\bdo\s+i\s+have\b|which\b.*\bdo\s+i\s+prefer\b|what\s+do\s+i\s+prefer\b|what\s+do\s+you\s+remember(?:\s+about)?\b|what\s+have\s+you\s+(?:saved|stored|remembered)(?:\s+about)?\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly string[] NotePrefixes =
     [
@@ -94,6 +99,14 @@ public sealed class AssistantToolService(
         "remind me to",
         "remind me",
         "reminder:"
+    ];
+
+    private static readonly string[] MemoryPrefixes =
+    [
+        "remember",
+        "keep in mind",
+        "for future reference",
+        "save this for later"
     ];
 
     private static readonly string[] SaveLocationPrefixes =
@@ -267,6 +280,10 @@ public sealed class AssistantToolService(
                 result = calculationResult;
             }
         }
+        else if (IsMemoryRecallRequest(input))
+        {
+            routeName = "DeferredMemoryRecallToLlm";
+        }
         else if (TryGetCommandText(input, SearchPrefixes, out string searchQuery))
         {
             routeName = "Search";
@@ -285,6 +302,10 @@ public sealed class AssistantToolService(
         else if (TryGetCommandText(input, ReminderPrefixes, out _))
         {
             routeName = "DeferredReminderToStructuredPlanner";
+        }
+        else if (TryGetCommandText(input, MemoryPrefixes, out _))
+        {
+            routeName = "DeferredMemoryToStructuredPlanner";
         }
 
         logger.LogInformation(
@@ -313,6 +334,7 @@ public sealed class AssistantToolService(
             AssistantActionTypeDto.CreateNote => await ExecutePlannedNoteAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateTask => await ExecutePlannedTaskAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateReminder => await ExecutePlannedReminderAsync(request, cancellationToken),
+            AssistantActionTypeDto.CreateMemory => await ExecutePlannedMemoryAsync(request, cancellationToken),
             AssistantActionTypeDto.Search => await SearchAsync(
                 request.Action.Query ?? request.Action.Title ?? request.Command.Input,
                 cancellationToken),
@@ -331,6 +353,41 @@ public sealed class AssistantToolService(
     }
 
     /// <summary>
+    /// Creates a long-term memory item from a structured assistant plan.
+    /// </summary>
+    private async Task<AssistantToolActionResult> ExecutePlannedMemoryAsync(
+        AssistantPlannedToolActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        string content = NormalizeCommandBody(request.Action.Description ?? request.Action.Title ?? string.Empty);
+
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return AssistantToolActionResult.NotHandled;
+        }
+
+        string title = string.IsNullOrWhiteSpace(request.Action.Title)
+            ? CreateTitle(content, "Saved memory")
+            : request.Action.Title.Trim();
+        AssistantMemoryItemDto memoryItem = await assistantMemoryService.CreateMemoryItemAsync(
+            new CreateAssistantMemoryItemRequest(
+                title,
+                content,
+                request.Action.Tags,
+                request.Action.IsPinned,
+                request.InteractionId,
+                request.Command.ChatId),
+            cancellationToken);
+
+        return Handled(
+            AssistantActionTypeDto.CreateMemory,
+            string.IsNullOrWhiteSpace(request.Action.ResponseText)
+                ? $"I will remember \"{memoryItem.Title}\"."
+                : request.Action.ResponseText,
+            memoryItem.Id,
+            "AssistantMemoryItem");
+    }
+
     /// Searches persisted NOAH data for assistant-facing lookup requests.
     /// </summary>
     private async Task<AssistantToolActionResult> SearchAsync(
@@ -982,6 +1039,12 @@ public sealed class AssistantToolService(
             RegexOptions.IgnoreCase);
 
         return normalizedValue.TrimStart(':', '-', '.', ',', ' ').Trim();
+    }
+
+    private static bool IsMemoryRecallRequest(string input)
+    {
+        string normalizedInput = NormalizeCommandInput(input);
+        return MemoryRecallIntentRegex.IsMatch(normalizedInput);
     }
 
     private static string BuildSearchResponseText(

@@ -8,10 +8,12 @@ public sealed record AssistantCommandRequest(
     AssistantInputModeDto InputMode,
     AssistantResponseModeDto? PreferredResponseMode,
     GeoCoordinateDto? CurrentLocation,
-    DateTimeOffset RequestedAtUtc);
+    DateTimeOffset RequestedAtUtc,
+    Guid? ChatId);
 
 public sealed record AssistantCommandResponse(
     Guid InteractionId,
+    Guid? ChatId,
     AssistantActionTypeDto ActionType,
     AssistantInteractionStatusDto Status,
     string ResponseText,
@@ -21,6 +23,7 @@ public sealed record AssistantCommandResponse(
 
 public sealed record AssistantInteractionDto(
     Guid Id,
+    Guid? ChatId,
     string UserInput,
     AssistantInputModeDto InputMode,
     AssistantActionTypeDto ActionType,

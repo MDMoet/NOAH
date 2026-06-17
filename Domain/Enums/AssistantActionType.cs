@@ -13,5 +13,6 @@ public enum AssistantActionType
     FindNearbyPlaces = 8,
     CalculateDistance = 9,
     CalculateValue = 10,
-    CancelCommand = 11
+    CancelCommand = 11,
+    CreateMemory = 12
 }

@@ -21,6 +21,9 @@ public sealed class AssistantService(
     IAssistantInteractionRepository assistantInteractionRepository,
     IAssistantPromptBuilder assistantPromptBuilder,
     IAssistantToolService assistantToolService,
+    IAssistantSettingsService assistantSettingsService,
+    IAssistantChatService assistantChatService,
+    IAssistantMemoryService assistantMemoryService,
     IAssistantModelRouter assistantModelRouter,
     IAssistantModelProcessManager assistantModelProcessManager,
     TimeProvider timeProvider,
@@ -47,7 +50,7 @@ public sealed class AssistantService(
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex StructuredActionIntentRegex = new(
-        @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|create\b|add\b|save\b|make\b|write\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|nearby\b|distance\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
+        @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|create\b|add\b|save\b|make\b|write\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|nearby\b|distance\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ExplicitNoteIntentRegex = new(
@@ -60,6 +63,10 @@ public sealed class AssistantService(
 
     private static readonly Regex ExplicitReminderIntentRegex = new(
         @"^(?:(?:create|add|set)\s+(?:(?:me|us)\s+)?(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|reminders?\s*:)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ExplicitMemoryIntentRegex = new(
+        @"^(?:remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|save\s+this\s+for\s+later\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ExplicitSearchIntentRegex = new(
@@ -79,22 +86,24 @@ public sealed class AssistantService(
           "properties": {
             "actionType": {
               "type": "string",
-              "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "Search", "ShowDayPlan" ]
+              "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "CreateMemory", "Search", "ShowDayPlan" ]
             },
             "title": { "type": [ "string", "null" ] },
             "description": { "type": [ "string", "null" ] },
+            "tags": { "type": [ "string", "null" ] },
             "query": { "type": [ "string", "null" ] },
             "scheduledAt": { "type": [ "string", "null" ] },
             "endsAt": { "type": [ "string", "null" ] },
             "timeZoneId": { "type": [ "string", "null" ] },
             "priority": { "type": [ "string", "null" ] },
+            "isPinned": { "type": "boolean" },
             "createLinkedReminder": { "type": "boolean" },
             "reminderAt": { "type": [ "string", "null" ] },
             "reminderTitle": { "type": [ "string", "null" ] },
             "reminderMessage": { "type": [ "string", "null" ] },
             "responseText": { "type": [ "string", "null" ] }
           },
-          "required": [ "actionType", "createLinkedReminder" ]
+          "required": [ "actionType", "isPinned", "createLinkedReminder" ]
         }
         """;
 
@@ -118,7 +127,13 @@ public sealed class AssistantService(
         }
 
         DateTimeOffset currentDateTimeUtc = timeProvider.GetUtcNow();
-        AssistantResponseModeDto responseMode = request.PreferredResponseMode ?? AssistantResponseModeDto.Text;
+        Stopwatch settingsStopwatch = Stopwatch.StartNew();
+        AssistantSettingsDto assistantSettings = await assistantSettingsService.GetSettingsAsync(cancellationToken);
+        logger.LogInformation(
+            "Loaded assistant settings in {ElapsedMs} ms.",
+            GetElapsedMilliseconds(settingsStopwatch));
+
+        AssistantResponseModeDto responseMode = request.PreferredResponseMode ?? assistantSettings.PreferredResponseMode;
         DateTimeOffset requestedAtUtc = request.RequestedAtUtc == default
             ? currentDateTimeUtc
             : request.RequestedAtUtc.ToUniversalTime();
@@ -126,6 +141,7 @@ public sealed class AssistantService(
         AssistantInteraction assistantInteraction = new()
         {
             Id = Guid.NewGuid(),
+            ChatId = request.ChatId,
             UserInput = input,
             InputMode = (AssistantInputMode)request.InputMode,
             ActionType = AssistantActionType.Unknown,
@@ -158,6 +174,19 @@ public sealed class AssistantService(
         logger.LogInformation(
             "Stored received assistant interaction in {ElapsedMs} ms.",
             GetElapsedMilliseconds(persistenceStopwatch));
+
+        if (assistantInteraction.ChatId.HasValue)
+        {
+            Stopwatch chatActivityStopwatch = Stopwatch.StartNew();
+            await assistantChatService.RecordInteractionAsync(
+                assistantInteraction.ChatId.Value,
+                input,
+                requestedAtUtc,
+                cancellationToken);
+            logger.LogInformation(
+                "Recorded assistant chat activity in {ElapsedMs} ms.",
+                GetElapsedMilliseconds(chatActivityStopwatch));
+        }
 
         try
         {
@@ -195,11 +224,39 @@ public sealed class AssistantService(
 
             Stopwatch conversationMemoryStopwatch = Stopwatch.StartNew();
             IReadOnlyList<AssistantConversationMemoryEntry> conversationMemory =
-                await LoadConversationMemoryAsync(assistantInteraction.Id, cancellationToken);
+                assistantSettings.EnableChatMemory && assistantSettings.ConversationMemoryMessageCount > 0
+                    ? await LoadConversationMemoryAsync(
+                        assistantInteraction.Id,
+                        assistantInteraction.ChatId,
+                        assistantSettings.ConversationMemoryMessageCount,
+                        cancellationToken)
+                    : Array.Empty<AssistantConversationMemoryEntry>();
             logger.LogInformation(
                 "Loaded {ConversationMemoryCount} conversation memory item(s) in {ElapsedMs} ms.",
                 conversationMemory.Count,
                 GetElapsedMilliseconds(conversationMemoryStopwatch));
+
+            Stopwatch chatPromptStopwatch = Stopwatch.StartNew();
+            AssistantChatPromptInfo? chatPromptInfo = assistantInteraction.ChatId.HasValue
+                ? await assistantChatService.GetPromptInfoAsync(assistantInteraction.ChatId.Value, cancellationToken)
+                : null;
+            logger.LogInformation(
+                "Loaded assistant chat prompt info in {ElapsedMs} ms. Has chat: {HasChat}.",
+                GetElapsedMilliseconds(chatPromptStopwatch),
+                chatPromptInfo != null);
+
+            Stopwatch longTermMemoryStopwatch = Stopwatch.StartNew();
+            IReadOnlyList<AssistantLongTermMemoryEntry> longTermMemory =
+                assistantSettings.EnableLongTermMemory && assistantSettings.LongTermMemoryItemCount > 0
+                    ? await assistantMemoryService.GetRelevantMemoryAsync(
+                        input,
+                        assistantSettings.LongTermMemoryItemCount,
+                        cancellationToken)
+                    : Array.Empty<AssistantLongTermMemoryEntry>();
+            logger.LogInformation(
+                "Loaded {LongTermMemoryCount} long-term memory item(s) in {ElapsedMs} ms.",
+                longTermMemory.Count,
+                GetElapsedMilliseconds(longTermMemoryStopwatch));
 
             Stopwatch contextStopwatch = Stopwatch.StartNew();
             AssistantPromptContext promptContext =
@@ -208,12 +265,16 @@ public sealed class AssistantService(
                     cancellationToken))
                 with
                 {
+                    Chat = chatPromptInfo,
+                    LongTermMemory = longTermMemory,
                     ConversationMemory = conversationMemory
                 };
             logger.LogInformation(
-                "Built assistant prompt context in {ElapsedMs} ms with {SearchResultCount} search result(s).",
+                "Built assistant prompt context in {ElapsedMs} ms with {SearchResultCount} search result(s), {ConversationMemoryCount} conversation entries, and {LongTermMemoryCount} long-term memories.",
                 GetElapsedMilliseconds(contextStopwatch),
-                promptContext.SearchResults.Count);
+                promptContext.SearchResults.Count,
+                promptContext.ConversationMemory.Count,
+                promptContext.LongTermMemory.Count);
 
             Stopwatch routingStopwatch = Stopwatch.StartNew();
             AssistantModelRoutingDecision routingDecision = assistantModelRouter.Route(
@@ -303,7 +364,9 @@ public sealed class AssistantService(
                 llmResult.ModelKey,
                 timeProvider.GetUtcNow());
 
-            assistantInteraction.AssistantResponse = NormalizeFallbackResponseText(llmResult.ResponseText);
+            assistantInteraction.AssistantResponse = NormalizeFallbackResponseText(
+                llmResult.ResponseText,
+                input);
             assistantInteraction.Status = AssistantInteractionStatus.Completed;
             assistantInteraction.CompletedAtUtc = timeProvider.GetUtcNow();
             assistantInteraction.UpdatedAtUtc = assistantInteraction.CompletedAtUtc;
@@ -374,6 +437,7 @@ public sealed class AssistantService(
     {
         return new AssistantCommandResponse(
             assistantInteraction.Id,
+            assistantInteraction.ChatId,
             (AssistantActionTypeDto)assistantInteraction.ActionType,
             (AssistantInteractionStatusDto)assistantInteraction.Status,
             NormalizeResponseText(assistantInteraction.AssistantResponse),
@@ -519,6 +583,7 @@ public sealed class AssistantService(
         promptBuilder.AppendLine("For CreateNote, generate the stored note content itself. Use title for a concise note title and description for the full note body.");
         promptBuilder.AppendLine("When the user asks you to note, write, draft, or save content for them, do not just repeat the command words. Actually write the requested content.");
         promptBuilder.AppendLine("For CreateTask and CreateReminder, generate clean stored titles and descriptions/messages instead of copying the request verbatim when a better result is obvious.");
+        promptBuilder.AppendLine("For CreateMemory, store durable facts, preferences, or reference details the user explicitly wants remembered. Use title for a concise label and description for the actual memory text.");
         promptBuilder.AppendLine("If the user wants to plan or schedule an event with a real date/time, use CreateTask and set createLinkedReminder to true.");
         promptBuilder.AppendLine("For scheduled events, set reminderAt to the same start time unless the user explicitly asks for a different reminder time.");
         promptBuilder.AppendLine("Use scheduledAt for the event start time and endsAt for the event end time when known.");
@@ -557,6 +622,27 @@ public sealed class AssistantService(
         }
 
         promptBuilder.AppendLine();
+        promptBuilder.AppendLine("Active chat:");
+
+        if (promptContext.Chat == null)
+        {
+            promptBuilder.AppendLine("- Ad-hoc conversation.");
+        }
+        else
+        {
+            promptBuilder.Append("- ");
+            promptBuilder.Append(promptContext.Chat.Title);
+
+            if (!string.IsNullOrWhiteSpace(promptContext.Chat.Description))
+            {
+                promptBuilder.Append(" - ");
+                promptBuilder.Append(promptContext.Chat.Description);
+            }
+
+            promptBuilder.AppendLine();
+        }
+
+        promptBuilder.AppendLine();
         promptBuilder.AppendLine("Recent conversation memory:");
 
         if (promptContext.ConversationMemory.Count == 0)
@@ -573,6 +659,39 @@ public sealed class AssistantService(
                 promptBuilder.Append(memoryEntry.ActionType);
                 promptBuilder.Append(" | User: ");
                 promptBuilder.AppendLine(memoryEntry.UserInput);
+            }
+        }
+
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("Relevant long-term memory:");
+
+        if (promptContext.LongTermMemory.Count == 0)
+        {
+            promptBuilder.AppendLine("- None available.");
+        }
+        else
+        {
+            foreach (AssistantLongTermMemoryEntry memoryEntry in promptContext.LongTermMemory.Take(6))
+            {
+                promptBuilder.Append("- ");
+                promptBuilder.Append(memoryEntry.Title);
+
+                if (memoryEntry.IsPinned)
+                {
+                    promptBuilder.Append(" [pinned]");
+                }
+
+                promptBuilder.Append(": ");
+                promptBuilder.Append(memoryEntry.Content);
+
+                if (!string.IsNullOrWhiteSpace(memoryEntry.Tags))
+                {
+                    promptBuilder.Append(" (tags: ");
+                    promptBuilder.Append(memoryEntry.Tags);
+                    promptBuilder.Append(')');
+                }
+
+                promptBuilder.AppendLine();
             }
         }
 
@@ -664,16 +783,43 @@ public sealed class AssistantService(
             : withoutOpeningFence.Trim();
     }
 
-    private static string NormalizeFallbackResponseText(string responseText)
+    private static string NormalizeFallbackResponseText(string responseText, string input)
     {
         string normalizedResponseText = NormalizeResponseText(responseText);
 
-        if (!FalseActionClaimRegex.IsMatch(normalizedResponseText))
+        if (!ShouldGuardAgainstFalseActionClaims(input) ||
+            !FalseActionClaimRegex.IsMatch(normalizedResponseText))
         {
             return normalizedResponseText;
         }
 
         return "I could not confirm that NOAH executed that action. Please try again, or use a more direct command.";
+    }
+
+    private static bool ShouldGuardAgainstFalseActionClaims(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        string normalizedInput = NormalizeIntentInput(input);
+
+        if (LooksLikeInformationQuestion(normalizedInput))
+        {
+            return false;
+        }
+
+        return GetExplicitStructuredActionHint(normalizedInput).HasValue ||
+               StructuredActionIntentRegex.IsMatch(normalizedInput);
+    }
+
+    private static bool LooksLikeInformationQuestion(string input)
+    {
+        return Regex.IsMatch(
+            input,
+            @"^(?:what|which|who|when|where|why|how)\b",
+            RegexOptions.IgnoreCase);
     }
 
     /// <summary>
@@ -719,6 +865,11 @@ public sealed class AssistantService(
             return AssistantActionTypeDto.CreateReminder;
         }
 
+        if (ExplicitMemoryIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.CreateMemory;
+        }
+
         if (ExplicitSearchIntentRegex.IsMatch(normalizedInput))
         {
             return AssistantActionTypeDto.Search;
@@ -754,11 +905,19 @@ public sealed class AssistantService(
 
     private async Task<IReadOnlyList<AssistantConversationMemoryEntry>> LoadConversationMemoryAsync(
         Guid currentInteractionId,
+        Guid? chatId,
+        int take,
         CancellationToken cancellationToken)
     {
+        if (take <= 0)
+        {
+            return Array.Empty<AssistantConversationMemoryEntry>();
+        }
+
         IReadOnlyList<AssistantInteraction> recentCompletedInteractions =
-            await assistantInteractionRepository.GetRecentCompletedAsync(
-                6,
+            await assistantInteractionRepository.GetRecentCompletedForScopeAsync(
+                chatId,
+                take,
                 currentInteractionId,
                 cancellationToken);
 

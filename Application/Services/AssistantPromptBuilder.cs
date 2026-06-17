@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Application.Interfaces;
 using Application.Models;
 using NOAH.Contracts.Assistant;
@@ -14,6 +15,8 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
     private const int MaximumUserMessageLength = 2_000;
     private const int MaximumConversationMemoryCount = 6;
     private const int MaximumConversationMessageLength = 250;
+    private const int MaximumLongTermMemoryCount = 6;
+    private const int MaximumMemoryFieldLength = 300;
     private const int MaximumSearchResultCount = 5;
     private const int MaximumSearchFieldLength = 300;
 
@@ -23,6 +26,7 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         "Create a note.",
         "Create a task.",
         "Create a reminder.",
+        "Store and reuse long-term memory facts and preferences.",
         "Save the user's current location or coordinates.",
         "Find nearby places from the user's current location.",
         "Geocode or reverse geocode locations.",
@@ -31,6 +35,10 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         "Show day, week, upcoming, overdue, and backlog planning.",
         "Calculate simple numeric expressions."
     ];
+
+    private static readonly Regex MemoryQuestionRegex = new(
+        @"^(?:what|which)\b.*\b(?:prefer|preference|remember|saved|stored)\b|^what\s+do\s+you\s+remember\b|^what\s+have\s+you\s+(?:saved|stored|remembered)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
     /// Builds a complete prompt from the user request and available NOAH context.
@@ -50,6 +58,9 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         promptBuilder.AppendLine("Never reveal chain-of-thought, internal reasoning, hidden analysis, or tool-selection steps.");
         promptBuilder.AppendLine("Never claim that NOAH created, updated, deleted, saved, scheduled, or reminded anything unless the action was actually executed.");
         promptBuilder.AppendLine("If the user wants a concrete action, prefer one of the available NOAH tools.");
+        promptBuilder.AppendLine("Use chat memory only for continuity inside the active chat, and use long-term memory only when it is relevant.");
+        promptBuilder.AppendLine("When the user asks what you remember, what preferences they have, or what has been saved about them, answer naturally from relevant long-term memory instead of dumping raw memory labels.");
+        promptBuilder.AppendLine("If relevant long-term memory exists for that question, treat it as the primary source for your answer.");
         promptBuilder.AppendLine();
         promptBuilder.AppendLine("Available NOAH tools:");
 
@@ -76,10 +87,25 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         }
 
         promptBuilder.AppendLine();
+        AppendChatContext(promptBuilder, context.Chat);
+        promptBuilder.AppendLine();
         AppendConversationMemory(promptBuilder, context.ConversationMemory);
+        promptBuilder.AppendLine();
+        AppendLongTermMemory(promptBuilder, context.LongTermMemory);
         promptBuilder.AppendLine();
         AppendSearchContext(promptBuilder, context.SearchResults);
         promptBuilder.AppendLine();
+
+        if (IsMemoryQuestion(request.Input) && context.LongTermMemory.Count > 0)
+        {
+            promptBuilder.AppendLine("Memory answer guidance:");
+            promptBuilder.AppendLine("- The user is explicitly asking about stored memory.");
+            promptBuilder.AppendLine("- Answer from the relevant long-term memory above.");
+            promptBuilder.AppendLine("- Summarize cleanly in normal assistant language.");
+            promptBuilder.AppendLine("- Do not prefix the answer with labels like \"Pinned memory\" or \"Stored memory\" unless the user asks for raw memory details.");
+            promptBuilder.AppendLine();
+        }
+
         promptBuilder.AppendLine("User message:");
         promptBuilder.AppendLine(SanitizeForPrompt(request.Input, MaximumUserMessageLength));
 
@@ -122,6 +148,30 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         }
     }
 
+    private static void AppendChatContext(
+        StringBuilder promptBuilder,
+        AssistantChatPromptInfo? chat)
+    {
+        promptBuilder.AppendLine("Active chat:");
+
+        if (chat == null)
+        {
+            promptBuilder.AppendLine("- Ad-hoc conversation.");
+            return;
+        }
+
+        promptBuilder.Append("- ");
+        promptBuilder.Append(SanitizeForPrompt(chat.Title, MaximumSearchFieldLength));
+
+        if (!string.IsNullOrWhiteSpace(chat.Description))
+        {
+            promptBuilder.Append(" - ");
+            promptBuilder.Append(SanitizeForPrompt(chat.Description, MaximumSearchFieldLength));
+        }
+
+        promptBuilder.AppendLine();
+    }
+
     private static void AppendConversationMemory(
         StringBuilder promptBuilder,
         IReadOnlyList<AssistantConversationMemoryEntry> conversationMemory)
@@ -153,6 +203,42 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         }
     }
 
+    private static void AppendLongTermMemory(
+        StringBuilder promptBuilder,
+        IReadOnlyList<AssistantLongTermMemoryEntry> longTermMemory)
+    {
+        promptBuilder.AppendLine("Relevant long-term memory:");
+
+        if (longTermMemory.Count == 0)
+        {
+            promptBuilder.AppendLine("- None available.");
+            return;
+        }
+
+        foreach (AssistantLongTermMemoryEntry memoryEntry in longTermMemory.Take(MaximumLongTermMemoryCount))
+        {
+            promptBuilder.Append("- ");
+            promptBuilder.Append(SanitizeForPrompt(memoryEntry.Title, MaximumMemoryFieldLength));
+
+            if (memoryEntry.IsPinned)
+            {
+                promptBuilder.Append(" [pinned]");
+            }
+
+            promptBuilder.Append(": ");
+            promptBuilder.Append(SanitizeForPrompt(memoryEntry.Content, MaximumMemoryFieldLength));
+
+            if (!string.IsNullOrWhiteSpace(memoryEntry.Tags))
+            {
+                promptBuilder.Append(" (tags: ");
+                promptBuilder.Append(SanitizeForPrompt(memoryEntry.Tags, MaximumMemoryFieldLength));
+                promptBuilder.Append(')');
+            }
+
+            promptBuilder.AppendLine();
+        }
+    }
+
     private static string SanitizeForPrompt(string? value, int maximumLength)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -168,6 +254,12 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         }
 
         return normalizedValue[..maximumLength].TrimEnd() + "...";
+    }
+
+    private static bool IsMemoryQuestion(string input)
+    {
+        return !string.IsNullOrWhiteSpace(input) &&
+               MemoryQuestionRegex.IsMatch(input.Trim());
     }
 
     private static string NormalizeWhitespace(string value)
