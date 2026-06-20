@@ -23,6 +23,10 @@ public sealed class AssistantModelProcessManager(
 {
     private const string CudaBinPath = @"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin";
 
+    private string? _currentlyReadyModelName;
+    private DateTimeOffset _lastSuccessfulReadyCheckUtc = DateTimeOffset.MinValue;
+    private static readonly TimeSpan ReadyCheckCacheDuration = TimeSpan.FromMinutes(2);
+    
     // Use a small dedicated client here so readiness polling stays cheap and independent from
     // normal LLM completion traffic.
     private static readonly HttpClient ReadinessHttpClient = new()
@@ -104,15 +108,48 @@ public sealed class AssistantModelProcessManager(
             return;
         }
 
+        DateTimeOffset currentTimeUtc = timeProvider.GetUtcNow();
+
+        bool readyCheckCacheIsValid =
+            string.Equals(_currentlyReadyModelName, modelKey, StringComparison.OrdinalIgnoreCase) &&
+            currentTimeUtc - _lastSuccessfulReadyCheckUtc < ReadyCheckCacheDuration;
+
+        if (readyCheckCacheIsValid)
+        {
+            logger.LogDebug(
+                "Skipped ensure-model-ready for {ModelKey} because the readiness cache is still valid.",
+                modelKey);
+
+            return;
+        }
+
         Stopwatch stopwatch = Stopwatch.StartNew();
         await _lifecycleGate.WaitAsync(cancellationToken);
 
         try
         {
+            currentTimeUtc = timeProvider.GetUtcNow();
+
+            readyCheckCacheIsValid =
+                string.Equals(_currentlyReadyModelName, modelKey, StringComparison.OrdinalIgnoreCase) &&
+                currentTimeUtc - _lastSuccessfulReadyCheckUtc < ReadyCheckCacheDuration;
+
+            if (readyCheckCacheIsValid)
+            {
+                logger.LogDebug(
+                    "Skipped ensure-model-ready for {ModelKey} after acquiring lifecycle gate because the readiness cache is still valid.",
+                    modelKey);
+
+                return;
+            }
+
             await EnsureModelReadyCoreAsync(
                 modelKey,
                 llmOptionsMonitor.CurrentValue,
                 cancellationToken);
+
+            _currentlyReadyModelName = modelKey;
+            _lastSuccessfulReadyCheckUtc = timeProvider.GetUtcNow();
 
             logger.LogInformation(
                 "Ensured managed model {ModelKey} is ready in {ElapsedMs} ms.",
@@ -289,6 +326,9 @@ public sealed class AssistantModelProcessManager(
                         : timeProvider.GetUtcNow());
             }
 
+            _currentlyReadyModelName = modelKey;
+            _lastSuccessfulReadyCheckUtc = timeProvider.GetUtcNow();
+
             logger.LogInformation(
                 "Managed model {ModelKey} was already ready. Endpoint check took {EndpointElapsedMs} ms. Total ensure time: {TotalElapsedMs} ms.",
                 modelKey,
@@ -312,6 +352,9 @@ public sealed class AssistantModelProcessManager(
 
         Stopwatch readinessStopwatch = Stopwatch.StartNew();
         await WaitForEndpointReadinessAsync(modelKey, modelOptions, processOptions, cancellationToken);
+
+        _currentlyReadyModelName = modelKey;
+        _lastSuccessfulReadyCheckUtc = timeProvider.GetUtcNow();
 
         logger.LogInformation(
             "Managed model {ModelKey} became ready after startup. Readiness wait: {ReadinessElapsedMs} ms. Total ensure time: {TotalElapsedMs} ms.",
