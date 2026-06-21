@@ -64,6 +64,10 @@ public sealed class AssistantToolService(
     private static readonly Regex MemoryRecallIntentRegex = new(
         @"^(?:what\s+(?:preference|preferences)\b.*\bdo\s+i\s+have\b|which\b.*\bdo\s+i\s+prefer\b|what\s+do\s+i\s+prefer\b|what\s+do\s+you\s+remember(?:\s+about)?\b|what\s+have\s+you\s+(?:saved|stored|remembered)(?:\s+about)?\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PlannedToolSyntaxResponseRegex = new(
+        @"\b(?:create\s+(?:note|task|reminder|memory)|find\s+nearby\s+places|save\s+location|calculate\s+distance|geocode|reverse\s+geocode|log\s+mileage)\s*\([^)]*\)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
+
 
     private static readonly string[] NotePrefixes =
     [
@@ -335,10 +339,25 @@ public sealed class AssistantToolService(
             AssistantActionTypeDto.CreateTask => await ExecutePlannedTaskAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateReminder => await ExecutePlannedReminderAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateMemory => await ExecutePlannedMemoryAsync(request, cancellationToken),
+            AssistantActionTypeDto.CreateMileageEntry => await CreateMileageEntryAsync(
+                request.Action.Description ?? request.Action.Query ?? request.Action.Title ?? request.Command.Input,
+                request.Command.CurrentLocation,
+                cancellationToken),
             AssistantActionTypeDto.Search => await SearchAsync(
                 request.Action.Query ?? request.Action.Title ?? request.Command.Input,
                 cancellationToken),
             AssistantActionTypeDto.ShowDayPlan => await ExecutePlannedDayPlanAsync(request, cancellationToken),
+            AssistantActionTypeDto.SaveLocation => await SaveLocationAsync(
+                request.Action.Title ?? request.Action.Description ?? request.Command.Input,
+                request.Command.CurrentLocation,
+                cancellationToken),
+            AssistantActionTypeDto.FindNearbyPlaces => await FindNearbyPlacesAsync(
+                request.Action.Query ?? request.Action.Title ?? request.Command.Input,
+                request.Command.CurrentLocation,
+                cancellationToken),
+            AssistantActionTypeDto.CalculateDistance => CalculateDistance(
+                request.Action.Query ?? request.Action.Description ?? request.Command.Input,
+                request.Command.CurrentLocation),
             _ => AssistantToolActionResult.NotHandled
         };
 
@@ -381,15 +400,13 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.CreateMemory,
-            string.IsNullOrWhiteSpace(request.Action.ResponseText)
-                ? $"I will remember \"{memoryItem.Title}\"."
-                : request.Action.ResponseText,
+            GetPlannedResponseText(
+                request.Action.ResponseText,
+                $"I will remember \"{memoryItem.Title}\"."),
             memoryItem.Id,
             "AssistantMemoryItem");
     }
 
-    /// Searches persisted NOAH data for assistant-facing lookup requests.
-    /// </summary>
     private async Task<AssistantToolActionResult> SearchAsync(
         string query,
         CancellationToken cancellationToken)
@@ -444,16 +461,13 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.CreateNote,
-            string.IsNullOrWhiteSpace(request.Action.ResponseText)
-                ? $"Created note \"{note.Title}\"."
-                : request.Action.ResponseText,
+            GetPlannedResponseText(
+                request.Action.ResponseText,
+                $"Created note \"{note.Title}\"."),
             note.Id,
             "Note");
     }
 
-    /// <summary>
-    /// Creates a task, and optionally a linked reminder, from a structured assistant plan.
-    /// </summary>
     private async Task<AssistantToolActionResult> ExecutePlannedTaskAsync(
         AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
@@ -491,9 +505,9 @@ public sealed class AssistantToolService(
 
             return Handled(
                 AssistantActionTypeDto.CreateTask,
-                string.IsNullOrWhiteSpace(request.Action.ResponseText)
-                    ? $"Created task \"{taskItem.Title}\".{dueText}"
-                    : request.Action.ResponseText,
+                GetPlannedResponseText(
+                    request.Action.ResponseText,
+                    $"Created task \"{taskItem.Title}\".{dueText}"),
                 taskItem.Id,
                 "Task");
         }
@@ -525,16 +539,13 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.CreateTask,
-            string.IsNullOrWhiteSpace(request.Action.ResponseText)
-                ? $"Created task \"{taskItem.Title}\" and linked reminder \"{reminder.Title}\" for {reminderAtUtc:u}."
-                : request.Action.ResponseText,
+            GetPlannedResponseText(
+                request.Action.ResponseText,
+                $"Created task \"{taskItem.Title}\" and linked reminder \"{reminder.Title}\" for {reminderAtUtc:u}."),
             taskItem.Id,
             "Task");
     }
 
-    /// <summary>
-    /// Creates a reminder from a structured assistant plan.
-    /// </summary>
     private async Task<AssistantToolActionResult> ExecutePlannedReminderAsync(
         AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
@@ -577,16 +588,13 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.CreateReminder,
-            string.IsNullOrWhiteSpace(request.Action.ResponseText)
-                ? $"Created reminder \"{reminder.Title}\" for {triggerAtUtc:u}."
-                : request.Action.ResponseText,
+            GetPlannedResponseText(
+                request.Action.ResponseText,
+                $"Created reminder \"{reminder.Title}\" for {triggerAtUtc:u}."),
             reminder.Id,
             "Reminder");
     }
 
-    /// <summary>
-    /// Returns planning data from a structured assistant plan.
-    /// </summary>
     private async Task<AssistantToolActionResult> ExecutePlannedDayPlanAsync(
         AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
@@ -605,9 +613,9 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.ShowDayPlan,
-            string.IsNullOrWhiteSpace(request.Action.ResponseText)
-                ? BuildDayPlanResponseText(dayPlan)
-                : request.Action.ResponseText);
+            GetPlannedResponseText(
+                request.Action.ResponseText,
+                BuildDayPlanResponseText(dayPlan)));
     }
 
     private async Task<AssistantToolActionResult> SaveLocationAsync(
@@ -1002,6 +1010,16 @@ public sealed class AssistantToolService(
         return char.IsWhiteSpace(nextCharacter) || char.IsPunctuation(nextCharacter);
     }
 
+    private static string GetPlannedResponseText(string? plannedResponseText, string fallbackResponseText)
+    {
+        string normalizedResponseText = NormalizeCommandBody(plannedResponseText ?? string.Empty);
+
+        return string.IsNullOrWhiteSpace(normalizedResponseText) ||
+               PlannedToolSyntaxResponseRegex.IsMatch(normalizedResponseText)
+            ? fallbackResponseText
+            : normalizedResponseText;
+    }
+
     private static AssistantToolActionResult Handled(
         AssistantActionTypeDto actionType,
         string responseText,
@@ -1311,7 +1329,7 @@ public sealed class AssistantToolService(
         {
             return new DateTimeOffset(requestedAtUtc.UtcDateTime.Date.AddDays(1).AddHours(9), TimeSpan.Zero);
         }
-        
+
         return requestedAtUtc.AddHours(1);
     }
 

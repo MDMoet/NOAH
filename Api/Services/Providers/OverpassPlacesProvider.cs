@@ -46,7 +46,7 @@ public sealed class OverpassPlacesProvider(
         timeoutCancellationTokenSource.CancelAfter(GetTimeout());
 
         using HttpRequestMessage requestMessage = new(HttpMethod.Post, interpreterUri);
-        
+
         // Overpass accepts its query through the "data" form field.
         requestMessage.Content = new FormUrlEncodedContent(new Dictionary<string, string>
         {

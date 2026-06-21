@@ -1,4 +1,4 @@
-﻿using Api.Interfaces;
+using Api.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NOAH.Contracts.Notes;

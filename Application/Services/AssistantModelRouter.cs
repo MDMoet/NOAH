@@ -83,7 +83,7 @@ public sealed class AssistantModelRouter(
     private static readonly Regex GeneralIntentRegex = new(
         @"\b(weather|time|date|remind|reminder|task|note|calendar|schedule|location|nearby|mileage|odometer|car|plant|keyboard|gym|food|recipe|invest|mortgage|translate|rewrite|improve this text|improve this message|email|message|what does this mean|explain this|summarize)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    
+
     private static readonly Regex ProgrammingLanguageRegex = new(
         @"(?<![a-zA-Z0-9_])(c#|csharp|\.net|asp\.net|sql|mysql|typescript|javascript|html|css|xaml|json|xml|yaml|powershell)(?![a-zA-Z0-9_])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -284,7 +284,7 @@ public sealed class AssistantModelRouter(
             generalScore += 25;
             reasons.Add("short input without coding signals");
         }
-        
+
         if (ProgrammingLanguageRegex.IsMatch(input))
         {
             codingScore += 70;

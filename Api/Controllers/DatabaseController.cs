@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using NOAH.Infrastructure.Persistence;
 
 // ReSharper disable once CheckNamespace

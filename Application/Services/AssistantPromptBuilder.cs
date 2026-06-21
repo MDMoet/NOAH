@@ -58,6 +58,7 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
         promptBuilder.AppendLine("Never reveal chain-of-thought, internal reasoning, hidden analysis, or tool-selection steps.");
         promptBuilder.AppendLine("Never claim that NOAH created, updated, deleted, saved, scheduled, or reminded anything unless the action was actually executed.");
         promptBuilder.AppendLine("If the user wants a concrete action, prefer one of the available NOAH tools.");
+        promptBuilder.AppendLine("Never output pseudo tool syntax like create note(...) or find nearby places(...). If NOAH did not execute an action, say so plainly.");
         promptBuilder.AppendLine("Use chat memory only for continuity inside the active chat, and use long-term memory only when it is relevant.");
         promptBuilder.AppendLine("When the user asks what you remember, what preferences they have, or what has been saved about them, answer naturally from relevant long-term memory instead of dumping raw memory labels.");
         promptBuilder.AppendLine("If relevant long-term memory exists for that question, treat it as the primary source for your answer.");

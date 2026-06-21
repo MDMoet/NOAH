@@ -1,4 +1,4 @@
-﻿using NOAH.Contracts.Assistant;
+using NOAH.Contracts.Assistant;
 
 namespace Application.Interfaces;
 

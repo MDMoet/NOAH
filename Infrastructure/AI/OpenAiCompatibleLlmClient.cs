@@ -314,7 +314,7 @@ public sealed class OpenAiCompatibleLlmClient(
             }
 
             OpenAiChatChoice completionChoice = completionResponse.Choices[0];
-            
+
             if (string.Equals(completionChoice.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
             {
                 string reasoningText = ExtractJsonElementText(completionChoice.Message?.ReasoningContent);
@@ -454,7 +454,7 @@ public sealed class OpenAiCompatibleLlmClient(
         {
             messages.Add(new OpenAiChatMessageRequest("system", request.SystemPrompt));
         }
-        
+
         // Make sure /no_think is passed for Qwen-style thinking models to skip reasoning to reduce token usage
         string userPrompt = request.StructuredOutput == null
             ? request.Prompt

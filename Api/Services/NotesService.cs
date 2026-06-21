@@ -1,4 +1,4 @@
-﻿using Api.Interfaces;
+using Api.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using NOAH.Contracts.Notes;
 using NOAH.Domain.Entities;

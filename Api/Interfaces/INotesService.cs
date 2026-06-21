@@ -1,4 +1,4 @@
-﻿using NOAH.Contracts.Notes;
+using NOAH.Contracts.Notes;
 
 namespace Api.Interfaces;
 

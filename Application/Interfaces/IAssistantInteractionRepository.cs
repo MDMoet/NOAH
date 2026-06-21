@@ -1,4 +1,4 @@
-﻿using NOAH.Domain.Entities;
+using NOAH.Domain.Entities;
 
 namespace Application.Interfaces;
 

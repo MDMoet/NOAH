@@ -26,7 +26,7 @@ public sealed class AssistantModelProcessManager(
     private string? _currentlyReadyModelName;
     private DateTimeOffset _lastSuccessfulReadyCheckUtc = DateTimeOffset.MinValue;
     private static readonly TimeSpan ReadyCheckCacheDuration = TimeSpan.FromMinutes(2);
-    
+
     // Use a small dedicated client here so readiness polling stays cheap and independent from
     // normal LLM completion traffic.
     private static readonly HttpClient ReadinessHttpClient = new()

@@ -1,4 +1,4 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using NOAH.Domain.Entities;
 using NOAH.Domain.Enums;

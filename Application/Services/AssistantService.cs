@@ -7,6 +7,7 @@ using Application.Interfaces;
 using Application.Models;
 using Microsoft.Extensions.Logging;
 using NOAH.Contracts.Assistant;
+using NOAH.Contracts.Common;
 using NOAH.Contracts.Enums;
 using NOAH.Domain.Entities;
 using NOAH.Domain.Enums;
@@ -46,11 +47,19 @@ public sealed class AssistantService(
     };
 
     private static readonly Regex FalseActionClaimRegex = new(
-        @"\b(i('|’)ve| have)?\s*(created|scheduled|saved|added|set up|logged|updated)\b",
+        @"\b(?:(?:i'?ve|i\s+have|we'?ve|we\s+have)\s+)?(?:created|scheduled|saved|added|set up|logged|updated)\b|\bcreated\s+(?:note|task|reminder|memory|location|mileage)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex PseudoToolCallRegex = new(
+        @"\b(?:create\s+(?:note|task|reminder|memory)|find\s+nearby\s+places|save\s+(?:my\s+|this\s+|current\s+)?location|calculate\s+distance|geocode|reverse\s+geocode|log\s+mileage|search)\s*\([^)]*\)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static readonly Regex RecoverablePseudoToolCallRegex = new(
+        @"(?<tool>create\s+(?:note|task|reminder|memory|mileage\s+entry)|find\s+nearby\s+places|save\s+location|calculate\s+distance|log\s+mileage|search)\s*\((?<args>[^)]*)\)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
+
     private static readonly Regex StructuredActionIntentRegex = new(
-        @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|create\b|add\b|save\b|make\b|write\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|nearby\b|distance\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
+        @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|create\b|add\b|save\b|make\b|write\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|where\s+is\b|find\s+coordinates\s+for\b|save\s+(?:my|this|current)\s+location\b|location\s*:|nearby\b|near\s+me\b|around\s+me\b|closest\b|nearest\b|distance(?:\s+(?:to|from))?\b|how\s+far\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ExplicitNoteIntentRegex = new(
@@ -67,6 +76,22 @@ public sealed class AssistantService(
 
     private static readonly Regex ExplicitMemoryIntentRegex = new(
         @"^(?:remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|save\s+this\s+for\s+later\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ExplicitSaveLocationIntentRegex = new(
+        @"^(?:save\s+(?:my|this|current)\s+location\b|save\s+location\b|add\s+location\b|location\s*:)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ExplicitNearbyIntentRegex = new(
+        @"\b(?:nearby|near\s+me|around\s+me|closest|nearest|places?\s+nearby)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ExplicitDistanceIntentRegex = new(
+        @"^(?:calculate\s+distance\b|distance(?:\s+(?:to|from))?\b|how\s+far\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ExplicitMileageIntentRegex = new(
+        @"^(?:create\s+mileage\s+entry\b|add\s+mileage\s+entry\b|log\s+mileage\b|mileage\s*:)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ExplicitSearchIntentRegex = new(
@@ -86,7 +111,7 @@ public sealed class AssistantService(
           "properties": {
             "actionType": {
               "type": "string",
-              "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "CreateMemory", "Search", "ShowDayPlan" ]
+              "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "CreateMemory", "CreateMileageEntry", "Search", "ShowDayPlan", "SaveLocation", "FindNearbyPlaces", "CalculateDistance" ]
             },
             "title": { "type": [ "string", "null" ] },
             "description": { "type": [ "string", "null" ] },
@@ -364,6 +389,35 @@ public sealed class AssistantService(
                 llmResult.ModelKey,
                 timeProvider.GetUtcNow());
 
+            AssistantToolActionResult recoveredPseudoToolActionResult =
+                await TryRecoverPseudoToolActionAsync(
+                    request with { Input = input, RequestedAtUtc = requestedAtUtc },
+                    assistantInteraction.Id,
+                    llmResult.ResponseText,
+                    cancellationToken);
+
+            if (recoveredPseudoToolActionResult.WasHandled)
+            {
+                assistantInteraction.ActionType = (AssistantActionType)recoveredPseudoToolActionResult.ActionType;
+                assistantInteraction.AssistantResponse = NormalizeResponseText(recoveredPseudoToolActionResult.ResponseText);
+                assistantInteraction.RelatedEntityId = recoveredPseudoToolActionResult.RelatedEntityId;
+                assistantInteraction.RelatedEntityType = recoveredPseudoToolActionResult.RelatedEntityType;
+                assistantInteraction.Status = AssistantInteractionStatus.Completed;
+                assistantInteraction.CompletedAtUtc = timeProvider.GetUtcNow();
+                assistantInteraction.UpdatedAtUtc = assistantInteraction.CompletedAtUtc;
+
+                Stopwatch recoveredActionUpdateStopwatch = Stopwatch.StartNew();
+                await assistantInteractionRepository.UpdateAsync(assistantInteraction, cancellationToken);
+
+                logger.LogWarning(
+                    "Recovered executable action {ActionType} from pseudo tool syntax emitted by the free-form LLM. Update persistence took {PersistenceElapsedMs} ms. Total request time: {TotalElapsedMs} ms.",
+                    recoveredPseudoToolActionResult.ActionType,
+                    GetElapsedMilliseconds(recoveredActionUpdateStopwatch),
+                    GetElapsedMilliseconds(requestStopwatch));
+
+                return MapToResponse(assistantInteraction);
+            }
+
             assistantInteraction.AssistantResponse = NormalizeFallbackResponseText(
                 llmResult.ResponseText,
                 input);
@@ -476,29 +530,78 @@ public sealed class AssistantService(
             {
                 logger.LogInformation(
                     "Structured assistant action planner did not produce an executable action.");
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Structured assistant action planner produced action {ActionType}.",
+                    plannedAction.ActionType);
+
+                if (explicitActionHint.HasValue &&
+                    plannedAction.ActionType != explicitActionHint.Value)
+                {
+                    logger.LogWarning(
+                        "Discarded structured assistant action {PlannedActionType} because the explicit user intent was {ExplicitActionType}.",
+                        plannedAction.ActionType,
+                        explicitActionHint.Value);
+                }
+                else
+                {
+                    AssistantToolActionResult executionResult =
+                        await assistantToolService.ExecutePlannedActionAsync(
+                            new AssistantPlannedToolActionRequest(
+                                request,
+                                interactionId,
+                                plannedAction),
+                            cancellationToken);
+
+                    if (executionResult.WasHandled)
+                    {
+                        return executionResult;
+                    }
+
+                    logger.LogWarning(
+                        "Structured assistant action {ActionType} could not be executed. Attempting an explicit-action fallback if one is available.",
+                        plannedAction.ActionType);
+                }
+            }
+
+            if (!explicitActionHint.HasValue)
+            {
                 return AssistantToolActionResult.NotHandled;
             }
 
-            logger.LogInformation(
-                "Structured assistant action planner produced action {ActionType}.",
-                plannedAction.ActionType);
+            AssistantPlannedToolAction? fallbackAction = await TryPlanExplicitActionAsync(
+                request,
+                promptContext,
+                routingDecision,
+                explicitActionHint.Value,
+                cancellationToken);
 
-            if (explicitActionHint.HasValue &&
-                plannedAction.ActionType != explicitActionHint.Value)
+            if (fallbackAction == null || fallbackAction.ActionType != explicitActionHint.Value)
             {
-                logger.LogWarning(
-                    "Discarded structured assistant action {PlannedActionType} because the explicit user intent was {ExplicitActionType}.",
-                    plannedAction.ActionType,
+                logger.LogInformation(
+                    "Explicit structured fallback for action {ActionType} did not produce an executable plan.",
                     explicitActionHint.Value);
                 return AssistantToolActionResult.NotHandled;
             }
 
-            return await assistantToolService.ExecutePlannedActionAsync(
-                new AssistantPlannedToolActionRequest(
-                    request,
-                    interactionId,
-                    plannedAction),
-                cancellationToken);
+            AssistantToolActionResult fallbackExecutionResult =
+                await assistantToolService.ExecutePlannedActionAsync(
+                    new AssistantPlannedToolActionRequest(
+                        request,
+                        interactionId,
+                        fallbackAction),
+                    cancellationToken);
+
+            if (!fallbackExecutionResult.WasHandled)
+            {
+                logger.LogWarning(
+                    "Explicit structured fallback for action {ActionType} still could not be executed.",
+                    explicitActionHint.Value);
+            }
+
+            return fallbackExecutionResult;
         }
         catch (Exception exception)
         {
@@ -521,6 +624,37 @@ public sealed class AssistantService(
         CancellationToken cancellationToken)
     {
         string plannerPrompt = BuildStructuredActionPlannerPrompt(request, promptContext);
+        return await TryPlanStructuredActionWithPromptAsync(
+            plannerPrompt,
+            routingDecision,
+            "general",
+            cancellationToken);
+    }
+
+    private async Task<AssistantPlannedToolAction?> TryPlanExplicitActionAsync(
+        AssistantCommandRequest request,
+        AssistantPromptContext promptContext,
+        AssistantModelRoutingDecision routingDecision,
+        AssistantActionTypeDto explicitActionType,
+        CancellationToken cancellationToken)
+    {
+        string plannerPrompt = BuildExplicitActionPlannerPrompt(
+            request,
+            promptContext,
+            explicitActionType);
+        return await TryPlanStructuredActionWithPromptAsync(
+            plannerPrompt,
+            routingDecision,
+            $"explicit:{explicitActionType}",
+            cancellationToken);
+    }
+
+    private async Task<AssistantPlannedToolAction?> TryPlanStructuredActionWithPromptAsync(
+        string plannerPrompt,
+        AssistantModelRoutingDecision routingDecision,
+        string scenarioName,
+        CancellationToken cancellationToken)
+    {
         LlmChatCompletionRequest[] plannerRequests =
         [
             new(
@@ -541,9 +675,10 @@ public sealed class AssistantService(
                 MaxTokensOverride: StructuredPlannerMaxTokens)
         ];
 
-        foreach (LlmChatCompletionRequest plannerRequest in plannerRequests)
+        for (int attemptIndex = 0; attemptIndex < plannerRequests.Length; attemptIndex++)
         {
-            int attemptNumber = Array.IndexOf(plannerRequests, plannerRequest) + 1;
+            LlmChatCompletionRequest plannerRequest = plannerRequests[attemptIndex];
+            int attemptNumber = attemptIndex + 1;
             Stopwatch plannerAttemptStopwatch = Stopwatch.StartNew();
             LlmChatCompletionResult plannerResult = await llmClient.GenerateResponseAsync(
                 plannerRequest,
@@ -551,7 +686,8 @@ public sealed class AssistantService(
             AssistantPlannedToolAction? plannedAction = TryDeserializePlannedAction(plannerResult.ResponseText);
 
             logger.LogInformation(
-                "Structured planner attempt {AttemptNumber} completed in {ElapsedMs} ms. Used schema: {UsesStructuredOutput}. Parsed action: {ActionType}.",
+                "Structured planner ({ScenarioName}) attempt {AttemptNumber} completed in {ElapsedMs} ms. Used schema: {UsesStructuredOutput}. Parsed action: {ActionType}.",
+                scenarioName,
                 attemptNumber,
                 GetElapsedMilliseconds(plannerAttemptStopwatch),
                 plannerRequest.StructuredOutput != null,
@@ -584,6 +720,11 @@ public sealed class AssistantService(
         promptBuilder.AppendLine("When the user asks you to note, write, draft, or save content for them, do not just repeat the command words. Actually write the requested content.");
         promptBuilder.AppendLine("For CreateTask and CreateReminder, generate clean stored titles and descriptions/messages instead of copying the request verbatim when a better result is obvious.");
         promptBuilder.AppendLine("For CreateMemory, store durable facts, preferences, or reference details the user explicitly wants remembered. Use title for a concise label and description for the actual memory text.");
+        promptBuilder.AppendLine("For FindNearbyPlaces, use query for the place type or search term, such as cafe, gas station, or pharmacy.");
+        promptBuilder.AppendLine("For SaveLocation, use title for the saved location name and rely on currentLocation or coordinates already present in the request.");
+        promptBuilder.AppendLine("For CalculateDistance, keep the user's coordinates or destination wording in query or description so NOAH can execute it.");
+        promptBuilder.AppendLine("For CreateMileageEntry, only use that action when the user is clearly trying to log an odometer reading or mileage value.");
+        promptBuilder.AppendLine("Never put pseudo tool syntax like find nearby places(...) or create note(...) in responseText.");
         promptBuilder.AppendLine("If the user wants to plan or schedule an event with a real date/time, use CreateTask and set createLinkedReminder to true.");
         promptBuilder.AppendLine("For scheduled events, set reminderAt to the same start time unless the user explicitly asks for a different reminder time.");
         promptBuilder.AppendLine("Use scheduledAt for the event start time and endsAt for the event end time when known.");
@@ -704,6 +845,125 @@ public sealed class AssistantService(
         return promptBuilder.ToString();
     }
 
+    private static string BuildExplicitActionPlannerPrompt(
+        AssistantCommandRequest request,
+        AssistantPromptContext promptContext,
+        AssistantActionTypeDto explicitActionType)
+    {
+        StringBuilder promptBuilder = new();
+        promptBuilder.AppendLine($"The user clearly wants the NOAH action {explicitActionType}.");
+        promptBuilder.AppendLine($"Return one valid JSON object for actionType {explicitActionType}.");
+        promptBuilder.AppendLine("Do not return Unknown, and do not choose a different action.");
+        promptBuilder.AppendLine("Never include pseudo tool syntax in responseText.");
+        promptBuilder.AppendLine("Only include concrete values that help NOAH execute the action.");
+
+        switch (explicitActionType)
+        {
+            case AssistantActionTypeDto.CreateNote:
+                promptBuilder.AppendLine("CreateNote guidance:");
+                promptBuilder.AppendLine("- Write an actual note title in title.");
+                promptBuilder.AppendLine("- Write the full stored note content in description.");
+                promptBuilder.AppendLine("- If the user asks you to write a story, list, draft, summary, or message, put the actual content in description.");
+                break;
+            case AssistantActionTypeDto.CreateTask:
+                promptBuilder.AppendLine("CreateTask guidance:");
+                promptBuilder.AppendLine("- Put a concise actionable title in title.");
+                promptBuilder.AppendLine("- Put useful task details in description.");
+                promptBuilder.AppendLine("- Use scheduledAt when the user gives a due date or start time.");
+                break;
+            case AssistantActionTypeDto.CreateReminder:
+                promptBuilder.AppendLine("CreateReminder guidance:");
+                promptBuilder.AppendLine("- Put the reminder title in reminderTitle or title.");
+                promptBuilder.AppendLine("- Put the reminder message in reminderMessage or description.");
+                promptBuilder.AppendLine("- Set reminderAt when the user gives a time.");
+                break;
+            case AssistantActionTypeDto.CreateMemory:
+                promptBuilder.AppendLine("CreateMemory guidance:");
+                promptBuilder.AppendLine("- Use title for a short memory label.");
+                promptBuilder.AppendLine("- Use description for the durable fact or preference to store.");
+                break;
+            case AssistantActionTypeDto.CreateMileageEntry:
+                promptBuilder.AppendLine("CreateMileageEntry guidance:");
+                promptBuilder.AppendLine("- Put the odometer or mileage text in description.");
+                promptBuilder.AppendLine("- Preserve the reading value clearly so NOAH can parse it.");
+                break;
+            case AssistantActionTypeDto.Search:
+                promptBuilder.AppendLine("Search guidance:");
+                promptBuilder.AppendLine("- Put only the NOAH search phrase in query.");
+                promptBuilder.AppendLine("- Do not use Search for open-ended questions or general knowledge.");
+                break;
+            case AssistantActionTypeDto.ShowDayPlan:
+                promptBuilder.AppendLine("ShowDayPlan guidance:");
+                promptBuilder.AppendLine("- Use scheduledAt when the user specifies a day.");
+                promptBuilder.AppendLine("- Keep responseText empty unless there is a clear natural confirmation.");
+                break;
+            case AssistantActionTypeDto.SaveLocation:
+                promptBuilder.AppendLine("SaveLocation guidance:");
+                promptBuilder.AppendLine("- Use title for the saved location name.");
+                promptBuilder.AppendLine("- Rely on currentLocation or coordinates in the user request.");
+                break;
+            case AssistantActionTypeDto.FindNearbyPlaces:
+                promptBuilder.AppendLine("FindNearbyPlaces guidance:");
+                promptBuilder.AppendLine("- Put only the place type or search term in query, for example cafe, restaurant, or pharmacy.");
+                promptBuilder.AppendLine("- Do not put coordinates or pseudo tool text in responseText.");
+                promptBuilder.AppendLine("- Rely on currentLocation or coordinates already present in the request.");
+                break;
+            case AssistantActionTypeDto.CalculateDistance:
+                promptBuilder.AppendLine("CalculateDistance guidance:");
+                promptBuilder.AppendLine("- Keep the destination wording or coordinates in query or description.");
+                promptBuilder.AppendLine("- Rely on currentLocation when the user asks for distance from where they are.");
+                break;
+        }
+
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine($"Current UTC time: {promptContext.CurrentDateTimeUtc:u}");
+        promptBuilder.AppendLine($"Requested at UTC: {request.RequestedAtUtc.ToUniversalTime():u}");
+
+        if (request.CurrentLocation != null)
+        {
+            promptBuilder.AppendLine(
+                $"Current location: latitude {request.CurrentLocation.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}, longitude {request.CurrentLocation.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}.");
+        }
+        else
+        {
+            promptBuilder.AppendLine("Current location: not supplied.");
+        }
+
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("Relevant NOAH search results:");
+
+        if (promptContext.SearchResults.Count == 0)
+        {
+            promptBuilder.AppendLine("- None found.");
+        }
+        else
+        {
+            foreach (AssistantContextSearchResult searchResult in promptContext.SearchResults.Take(5))
+            {
+                promptBuilder.Append("- ");
+                promptBuilder.Append(searchResult.Type);
+                promptBuilder.Append(": ");
+                promptBuilder.Append(searchResult.Title);
+
+                if (!string.IsNullOrWhiteSpace(searchResult.Preview))
+                {
+                    promptBuilder.Append(" - ");
+                    promptBuilder.Append(searchResult.Preview);
+                }
+
+                promptBuilder.AppendLine();
+            }
+        }
+
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("User request:");
+        promptBuilder.AppendLine(request.Input);
+        promptBuilder.AppendLine();
+        promptBuilder.AppendLine("/no_think");
+
+        return promptBuilder.ToString();
+    }
+
     private static AssistantPlannedToolAction? TryDeserializePlannedAction(string? responseText)
     {
         if (string.IsNullOrWhiteSpace(responseText))
@@ -783,12 +1043,323 @@ public sealed class AssistantService(
             : withoutOpeningFence.Trim();
     }
 
+    private async Task<AssistantToolActionResult> TryRecoverPseudoToolActionAsync(
+        AssistantCommandRequest request,
+        Guid interactionId,
+        string responseText,
+        CancellationToken cancellationToken)
+    {
+        ParsedPseudoToolAction? parsedAction = TryParsePseudoToolAction(responseText);
+
+        if (parsedAction == null)
+        {
+            return AssistantToolActionResult.NotHandled;
+        }
+
+        AssistantCommandRequest executableRequest = parsedAction.LocationOverride == null
+            ? request
+            : request with { CurrentLocation = parsedAction.LocationOverride };
+
+        logger.LogWarning(
+            "Attempting to recover pseudo tool syntax from the free-form LLM as action {ActionType}.",
+            parsedAction.Action.ActionType);
+
+        return await assistantToolService.ExecutePlannedActionAsync(
+            new AssistantPlannedToolActionRequest(
+                executableRequest,
+                interactionId,
+                parsedAction.Action),
+            cancellationToken);
+    }
+
+    private static ParsedPseudoToolAction? TryParsePseudoToolAction(string responseText)
+    {
+        if (string.IsNullOrWhiteSpace(responseText))
+        {
+            return null;
+        }
+
+        Match match = RecoverablePseudoToolCallRegex.Match(responseText.Trim());
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        string toolName = NormalizeIntentInput(match.Groups["tool"].Value);
+        IReadOnlyDictionary<string, string> arguments = ParsePseudoToolArguments(match.Groups["args"].Value);
+        GeoCoordinateDto? locationOverride = TryParsePseudoToolLocation(arguments);
+        AssistantPlannedToolAction? action = toolName switch
+        {
+            "create note" => CreatePlannedToolAction(
+                AssistantActionTypeDto.CreateNote,
+                title: GetPseudoToolArgument(arguments, "title", "name"),
+                description: GetPseudoToolArgument(arguments, "description", "content", "body", "text")),
+            "create task" => CreatePlannedToolAction(
+                AssistantActionTypeDto.CreateTask,
+                title: GetPseudoToolArgument(arguments, "title", "name"),
+                description: GetPseudoToolArgument(arguments, "description", "content", "body", "text"),
+                scheduledAt: GetPseudoToolArgument(arguments, "scheduledAt", "dueAt", "when"),
+                priority: TryParseTaskPriority(GetPseudoToolArgument(arguments, "priority")),
+                createLinkedReminder: TryParsePseudoToolBoolean(GetPseudoToolArgument(arguments, "createLinkedReminder", "createReminder"))),
+            "create reminder" => CreatePlannedToolAction(
+                AssistantActionTypeDto.CreateReminder,
+                title: GetPseudoToolArgument(arguments, "title", "name"),
+                description: GetPseudoToolArgument(arguments, "description", "message", "content", "body", "text"),
+                scheduledAt: GetPseudoToolArgument(arguments, "scheduledAt", "when"),
+                reminderAt: GetPseudoToolArgument(arguments, "reminderAt", "triggerAt", "when"),
+                reminderTitle: GetPseudoToolArgument(arguments, "reminderTitle", "title", "name"),
+                reminderMessage: GetPseudoToolArgument(arguments, "reminderMessage", "message", "description", "content")),
+            "create memory" => CreatePlannedToolAction(
+                AssistantActionTypeDto.CreateMemory,
+                title: GetPseudoToolArgument(arguments, "title", "name"),
+                description: GetPseudoToolArgument(arguments, "description", "content", "body", "text"),
+                tags: GetPseudoToolArgument(arguments, "tags"),
+                isPinned: TryParsePseudoToolBoolean(GetPseudoToolArgument(arguments, "isPinned", "pinned"))),
+            "create mileage entry" or "log mileage" => CreatePlannedToolAction(
+                AssistantActionTypeDto.CreateMileageEntry,
+                description: BuildPseudoMileageDescription(arguments)),
+            "find nearby places" => CreatePlannedToolAction(
+                AssistantActionTypeDto.FindNearbyPlaces,
+                query: GetPseudoToolArgument(arguments, "query", "type", "search", "place", "category")),
+            "save location" => CreatePlannedToolAction(
+                AssistantActionTypeDto.SaveLocation,
+                title: GetPseudoToolArgument(arguments, "title", "name", "label")),
+            "calculate distance" => CreatePlannedToolAction(
+                AssistantActionTypeDto.CalculateDistance,
+                query: BuildPseudoDistanceQuery(arguments)),
+            "search" => CreatePlannedToolAction(
+                AssistantActionTypeDto.Search,
+                query: GetPseudoToolArgument(arguments, "query", "text", "search")),
+            _ => null
+        };
+
+        return action == null
+            ? null
+            : new ParsedPseudoToolAction(action, locationOverride);
+    }
+
+    private static IReadOnlyDictionary<string, string> ParsePseudoToolArguments(string value)
+    {
+        Dictionary<string, string> arguments = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string segment in SplitPseudoToolArguments(value))
+        {
+            int separatorIndex = segment.IndexOf('=');
+
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            string key = segment[..separatorIndex].Trim();
+            string parsedValue = TrimWrappingQuotes(segment[(separatorIndex + 1)..].Trim());
+
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                arguments[key] = parsedValue;
+            }
+        }
+
+        return arguments;
+    }
+
+    private static IEnumerable<string> SplitPseudoToolArguments(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            yield break;
+        }
+
+        StringBuilder currentSegment = new();
+        char activeQuote = '\0';
+
+        foreach (char character in value)
+        {
+            if (activeQuote != '\0')
+            {
+                currentSegment.Append(character);
+
+                if (character == activeQuote)
+                {
+                    activeQuote = '\0';
+                }
+
+                continue;
+            }
+
+            if (character == '"' || character == '\'')
+            {
+                activeQuote = character;
+                currentSegment.Append(character);
+                continue;
+            }
+
+            if (character == ',')
+            {
+                string segment = currentSegment.ToString().Trim();
+
+                if (!string.IsNullOrWhiteSpace(segment))
+                {
+                    yield return segment;
+                }
+
+                currentSegment.Clear();
+                continue;
+            }
+
+            currentSegment.Append(character);
+        }
+
+        string finalSegment = currentSegment.ToString().Trim();
+
+        if (!string.IsNullOrWhiteSpace(finalSegment))
+        {
+            yield return finalSegment;
+        }
+    }
+
+    private static string TrimWrappingQuotes(string value)
+    {
+        return value.Length >= 2 &&
+               ((value[0] == '"' && value[^1] == '"') ||
+                (value[0] == '\'' && value[^1] == '\''))
+            ? value[1..^1]
+            : value;
+    }
+
+    private static string? GetPseudoToolArgument(
+        IReadOnlyDictionary<string, string> arguments,
+        params string[] keys)
+    {
+        foreach (string key in keys)
+        {
+            if (arguments.TryGetValue(key, out string? value) &&
+                !string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static GeoCoordinateDto? TryParsePseudoToolLocation(
+        IReadOnlyDictionary<string, string> arguments)
+    {
+        double? latitude = TryParsePseudoToolDouble(
+            GetPseudoToolArgument(arguments, "lat", "latitude"));
+        double? longitude = TryParsePseudoToolDouble(
+            GetPseudoToolArgument(arguments, "long", "lng", "lon", "longitude"));
+
+        return latitude.HasValue && longitude.HasValue
+            ? new GeoCoordinateDto(latitude.Value, longitude.Value)
+            : null;
+    }
+
+    private static double? TryParsePseudoToolDouble(string? value)
+    {
+        return double.TryParse(value, out double parsedValue)
+            ? parsedValue
+            : double.TryParse(
+                value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out parsedValue)
+                ? parsedValue
+                : null;
+    }
+
+    private static bool TryParsePseudoToolBoolean(string? value)
+    {
+        return bool.TryParse(value, out bool parsedValue) && parsedValue;
+    }
+
+    private static string? BuildPseudoMileageDescription(IReadOnlyDictionary<string, string> arguments)
+    {
+        string? odometer = GetPseudoToolArgument(arguments, "odometer", "odometerKm", "reading", "value", "mileage");
+        string? trip = GetPseudoToolArgument(arguments, "trip", "tripDistance", "distance");
+
+        if (string.IsNullOrWhiteSpace(odometer))
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(trip)
+            ? odometer
+            : $"{odometer} trip {trip}";
+    }
+
+    private static string? BuildPseudoDistanceQuery(IReadOnlyDictionary<string, string> arguments)
+    {
+        string? from = GetPseudoToolArgument(arguments, "from", "origin");
+        string? to = GetPseudoToolArgument(arguments, "to", "destination");
+
+        if (!string.IsNullOrWhiteSpace(from) && !string.IsNullOrWhiteSpace(to))
+        {
+            return $"{from} to {to}";
+        }
+
+        return GetPseudoToolArgument(arguments, "query", "destination", "to");
+    }
+
+    private static TaskPriorityDto? TryParseTaskPriority(string? value)
+    {
+        return Enum.TryParse<TaskPriorityDto>(value, true, out TaskPriorityDto parsedPriority)
+            ? parsedPriority
+            : null;
+    }
+
+    private static AssistantPlannedToolAction CreatePlannedToolAction(
+        AssistantActionTypeDto actionType,
+        string? title = null,
+        string? description = null,
+        string? tags = null,
+        string? query = null,
+        string? scheduledAt = null,
+        string? endsAt = null,
+        string? timeZoneId = null,
+        TaskPriorityDto? priority = null,
+        bool isPinned = false,
+        bool createLinkedReminder = false,
+        string? reminderAt = null,
+        string? reminderTitle = null,
+        string? reminderMessage = null,
+        string? responseText = null)
+    {
+        return new AssistantPlannedToolAction(
+            actionType,
+            title,
+            description,
+            tags,
+            query,
+            scheduledAt,
+            endsAt,
+            timeZoneId,
+            priority,
+            isPinned,
+            createLinkedReminder,
+            reminderAt,
+            reminderTitle,
+            reminderMessage,
+            responseText);
+    }
+
     private static string NormalizeFallbackResponseText(string responseText, string input)
     {
         string normalizedResponseText = NormalizeResponseText(responseText);
 
-        if (!ShouldGuardAgainstFalseActionClaims(input) ||
-            !FalseActionClaimRegex.IsMatch(normalizedResponseText))
+        if (!ShouldGuardAgainstFalseActionClaims(input))
+        {
+            return normalizedResponseText;
+        }
+
+        if (PseudoToolCallRegex.IsMatch(normalizedResponseText))
+        {
+            return "I could not complete that NOAH action. Please try again, or ask in a more direct way.";
+        }
+
+        if (!FalseActionClaimRegex.IsMatch(normalizedResponseText))
         {
             return normalizedResponseText;
         }
@@ -804,14 +1375,15 @@ public sealed class AssistantService(
         }
 
         string normalizedInput = NormalizeIntentInput(input);
+        bool looksLikeToolIntent = GetExplicitStructuredActionHint(normalizedInput).HasValue ||
+                                   StructuredActionIntentRegex.IsMatch(normalizedInput);
 
-        if (LooksLikeInformationQuestion(normalizedInput))
+        if (looksLikeToolIntent)
         {
-            return false;
+            return true;
         }
 
-        return GetExplicitStructuredActionHint(normalizedInput).HasValue ||
-               StructuredActionIntentRegex.IsMatch(normalizedInput);
+        return !LooksLikeInformationQuestion(normalizedInput);
     }
 
     private static bool LooksLikeInformationQuestion(string input)
@@ -870,6 +1442,26 @@ public sealed class AssistantService(
             return AssistantActionTypeDto.CreateMemory;
         }
 
+        if (ExplicitSaveLocationIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.SaveLocation;
+        }
+
+        if (ExplicitNearbyIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.FindNearbyPlaces;
+        }
+
+        if (ExplicitDistanceIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.CalculateDistance;
+        }
+
+        if (ExplicitMileageIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.CreateMileageEntry;
+        }
+
         if (ExplicitSearchIntentRegex.IsMatch(normalizedInput))
         {
             return AssistantActionTypeDto.Search;
@@ -902,6 +1494,10 @@ public sealed class AssistantService(
     {
         return Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2);
     }
+
+    private sealed record ParsedPseudoToolAction(
+        AssistantPlannedToolAction Action,
+        GeoCoordinateDto? LocationOverride);
 
     private async Task<IReadOnlyList<AssistantConversationMemoryEntry>> LoadConversationMemoryAsync(
         Guid currentInteractionId,
