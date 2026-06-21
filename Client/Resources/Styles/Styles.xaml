@@ -375,6 +375,41 @@
             </VisualStateGroupList>
         </Setter>
     </Style>
+
+    <Style x:Key="NoahCardBorder" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{StaticResource NoahCard}" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+        <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+        <Setter Property="StrokeThickness" Value="0.6" />
+    </Style>
+
+    <Style x:Key="NoahPillBorder" TargetType="Border" BasedOn="{StaticResource NoahCardBorder}">
+        <Setter Property="StrokeShape" Value="RoundRectangle 999" />
+    </Style>
+
+    <Style x:Key="NoahIconButtonBorder" TargetType="Border" BasedOn="{StaticResource NoahPillBorder}">
+        <Setter Property="WidthRequest" Value="44" />
+        <Setter Property="HeightRequest" Value="44" />
+    </Style>
+
+    <Style x:Key="NoahSectionLabel" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextColor" Value="{StaticResource NoahTextSecondary}" />
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+    </Style>
+
+    <Style x:Key="NoahMutedLabel" TargetType="Label">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="TextColor" Value="{StaticResource NoahTextSecondary}" />
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+    </Style>
+
+    <Style x:Key="NoahNavigationIcon" TargetType="Label">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="TextColor" Value="{StaticResource NoahAccent}" />
+        <Setter Property="HorizontalOptions" Value="Center" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
   
     <!--
     <Style TargetType="TitleBar">

@@ -1,36 +1,510 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="Client.MainPage">
+             xmlns:behaviors="clr-namespace:Client.Behaviors"
+             xmlns:components="clr-namespace:Client.Views.Components"
+             xmlns:models="clr-namespace:Client.Models"
+             xmlns:viewmodels="clr-namespace:Client.ViewModels"
+             xmlns:views="clr-namespace:Client.Views"
+             x:Class="Client.MainPage"
+             x:Name="AssistantPage"
+             x:DataType="viewmodels:MainPageViewModel"
+             BackgroundColor="{StaticResource NoahBackground}">
 
-    <ScrollView>
-        <VerticalStackLayout
-            Padding="30,0"
-            Spacing="25">
-            <Image
-                Source="dotnet_bot.png"
-                HeightRequest="185"
-                Aspect="AspectFit"
-                SemanticProperties.Description="dot net bot in a submarine number ten" />
+    <Grid x:Name="RootGrid" BackgroundColor="{StaticResource NoahBackground}">
+        <Grid.Behaviors>
+            <behaviors:AdaptiveStateBehavior Breakpoint="720" MobileState="MobileState" DesktopState="DesktopState" />
+        </Grid.Behaviors>
 
-            <Label
-                Text="Hello, World!"
-                Style="{StaticResource Headline}"
-                SemanticProperties.HeadingLevel="Level1" />
+        <Grid x:Name="DesktopLayout" IsVisible="False" ColumnDefinitions="320,6,*">
+            <Grid BackgroundColor="{StaticResource NoahSurface}" RowDefinitions="70,4,Auto,Auto,4,*">
+                <Grid Padding="10,0" ColumnDefinitions="52,*" ColumnSpacing="6">
+                    <Image Source="cog_outline_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" HorizontalOptions="Center" VerticalOptions="Center"><Image.Behaviors><behaviors:TapScaleBehavior /></Image.Behaviors><Image.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSettingsCommand}" /></Image.GestureRecognizers></Image>
+                    <views:DesktopNavigationView Grid.Column="1" ShowSettings="False" IsChatSelected="True" NavigateHomeCommand="{Binding NavigateHomeCommand}" NavigateMileageCommand="{Binding NavigateMileageCommand}" NavigateNotesCommand="{Binding NavigateNotesCommand}" NavigateCalendarCommand="{Binding NavigateCalendarCommand}" NavigateChatCommand="{Binding NavigateChatCommand}" ToggleSettingsCommand="{Binding ToggleSettingsCommand}" HeightRequest="50" VerticalOptions="Center" />
+                </Grid>
 
-            <Label
-                Text="Welcome to &#10;.NET Multi-platform App UI"
-                Style="{StaticResource SubHeadline}"
-                SemanticProperties.HeadingLevel="Level2"
-                SemanticProperties.Description="Welcome to dot net Multi platform App U I" />
+                <BoxView Grid.Row="1" BackgroundColor="#17122B" />
 
-            <Button
-                x:Name="CounterBtn"
-                Text="Click me" 
-                SemanticProperties.Hint="Counts the number of times you click"
-                Clicked="OnCounterClicked"
-                HorizontalOptions="Fill" />
-        </VerticalStackLayout>
-    </ScrollView>
+                <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="14" Padding="20,18,18,12">
+                    <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
+                    <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding CreateChatCommand}" /></Grid.GestureRecognizers>
+                    <Image Source="newchat_purple.png" WidthRequest="38" HeightRequest="38" Aspect="AspectFit" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Create new chat" FontSize="20" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                </Grid>
 
+                <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="14" Padding="20,12,18,22">
+                    <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
+                    <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSearchCommand}" /></Grid.GestureRecognizers>
+                    <Image Source="magnify_purple.png" WidthRequest="38" HeightRequest="38" Aspect="AspectFit" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Search in chats" FontSize="20" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                </Grid>
+
+                <BoxView Grid.Row="4" BackgroundColor="#17122B" />
+
+                <Grid Grid.Row="5" RowDefinitions="Auto,*" Padding="18,22,16,0">
+                    <VerticalStackLayout Spacing="8">
+                        <components:SearchEntryView IsVisible="{Binding IsSearchVisible}" Text="{Binding SearchText}" Placeholder="Search chats" IconSource="magnify_purple.png" IconWidth="18" IconHeight="18" FontSize="13" ControlHeight="48" EntryHeight="40" />
+                        <Label Text="{Binding ArchivedChatsToggleText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" Padding="8,0">
+                            <Label.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleArchivedChatsCommand}" /></Label.GestureRecognizers>
+                        </Label>
+                    </VerticalStackLayout>
+
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding Chats}" SelectionMode="None" Margin="0,20,0,0">
+                        <CollectionView.EmptyView><Label Text="{Binding ChatEmptyStateText}" FontSize="14" TextColor="{StaticResource NoahTextSecondary}" Margin="10,12,0,0" /></CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:AssistantChatListItem">
+                                <VerticalStackLayout Spacing="8" Margin="0,0,0,10">
+                                    <Border BackgroundColor="{StaticResource NoahCard}" Stroke="#17122B" StrokeThickness="1" StrokeShape="RoundRectangle 18" Padding="14,0" HeightRequest="66">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                                <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                <Setter Property="Stroke" Value="{StaticResource NoahCardSelected}" />
+                                            </DataTrigger>
+                                        </Border.Triggers>
+                                        <Border.Behaviors>
+                                            <behaviors:TapScaleBehavior />
+                                            <behaviors:LongPressBehavior Command="{Binding BindingContext.ShowChatActionsCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                        </Border.Behaviors>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding BindingContext.SelectChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                            <TapGestureRecognizer Buttons="Secondary" Command="{Binding BindingContext.ShowChatActionsCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Label Text="{Binding Title}" FontSize="15" TextColor="{StaticResource NoahTextPrimary}" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                                    </Border>
+
+                                    <Border IsVisible="{Binding IsActionMenuVisible}" BackgroundColor="#0E0B17" Stroke="{StaticResource NoahAccent}" StrokeThickness="0.6" StrokeShape="RoundRectangle 14" Padding="10">
+                                        <HorizontalStackLayout Spacing="8">
+                                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="12,8" HorizontalOptions="Fill">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding BindingContext.RenameChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Label Text="Rename" FontSize="12" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                            </Border>
+                                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="12,8" HorizontalOptions="Fill">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding BindingContext.ToggleArchiveChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Label Text="{Binding ArchiveActionLabel}" FontSize="12" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                            </Border>
+                                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="12,8" HorizontalOptions="Fill">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding BindingContext.DeleteChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Label Text="Delete" FontSize="12" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                            </Border>
+                                        </HorizontalStackLayout>
+                                    </Border>
+
+                                    <Border IsVisible="{Binding IsRenameEditorVisible}" BackgroundColor="#0E0B17" Stroke="{StaticResource NoahAccent}" StrokeThickness="0.6" StrokeShape="RoundRectangle 14" Padding="10">
+                                        <VerticalStackLayout Spacing="8">
+                                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="12,0">
+                                                <Entry Text="{Binding EditableTitle}" Placeholder="Chat title" PlaceholderColor="{StaticResource NoahTextMuted}" TextColor="{StaticResource NoahTextPrimary}" BackgroundColor="Transparent" FontSize="13" HeightRequest="40" />
+                                            </Border>
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <Border BackgroundColor="Transparent" Stroke="{StaticResource NoahAccent}" StrokeThickness="1" StrokeShape="RoundRectangle 999" Padding="0,9">
+                                                    <Border.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding BindingContext.CancelRenameChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                                    </Border.GestureRecognizers>
+                                                    <Label Text="Cancel" FontSize="12" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                                </Border>
+                                                <Border Grid.Column="1" BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="0,9">
+                                                    <Border.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding BindingContext.SaveChatRenameCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" />
+                                                    </Border.GestureRecognizers>
+                                                    <Label Text="Save" FontSize="12" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Grid>
+
+            <BoxView Grid.Column="1" BackgroundColor="#171126" />
+
+            <Grid Grid.Column="2" RowDefinitions="*,Auto" BackgroundColor="{StaticResource NoahBackground}">
+                <CollectionView ItemsSource="{Binding Messages}" SelectionMode="None" Margin="44,40,24,0">
+                    <CollectionView.EmptyView>
+                        <VerticalStackLayout Spacing="6" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Label Text="No messages yet" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" HorizontalTextAlignment="Center" />
+                            <Label Text="Create or select a chat, then say hi." FontSize="13" TextColor="{StaticResource NoahTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </CollectionView.EmptyView>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:ChatMessageItem">
+                            <Grid Padding="0,0,0,28" ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout IsVisible="{Binding IsFromAssistant}" HorizontalOptions="Start" MaximumWidthRequest="1050" Spacing="6">
+                                    <Label Text="{Binding MetaText}" IsVisible="{Binding HasMetaText}" FontSize="15" TextColor="{StaticResource NoahTextSecondary}" />
+                                    <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="20" />
+                                    <Label Text="{Binding TimestampText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1" IsVisible="{Binding IsFromUser}" HorizontalOptions="End" MaximumWidthRequest="650" Spacing="4">
+                                    <Border BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 18,0,18,18" Padding="30,12" HorizontalOptions="End">
+                                        <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="20" />
+                                    </Border>
+                                    <Label Text="{Binding TimestampText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" HorizontalOptions="End" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="18" HorizontalOptions="Center" WidthRequest="920" Padding="0,0,0,24">
+                    <VerticalStackLayout Spacing="10">
+                        <ScrollView Orientation="Horizontal"
+                                    HorizontalScrollBarVisibility="Never"
+                                    IsVisible="{Binding HasDraftAttachments}">
+                            <HorizontalStackLayout Spacing="8"
+                                                   BindableLayout.ItemsSource="{Binding DraftAttachments}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:AssistantDraftAttachment">
+                                        <Border BackgroundColor="#17122B"
+                                                Stroke="{StaticResource NoahAccent}"
+                                                StrokeThickness="0.6"
+                                                StrokeShape="RoundRectangle 999"
+                                                Padding="12,8">
+                                            <HorizontalStackLayout Spacing="8">
+                                                <Image Source="{Binding IconSource}"
+                                                       WidthRequest="16"
+                                                       HeightRequest="16"
+                                                       Aspect="AspectFit"
+                                                       VerticalOptions="Center" />
+                                                <Label Text="{Binding DisplayName}"
+                                                       FontSize="12"
+                                                       TextColor="{StaticResource NoahTextPrimary}"
+                                                       VerticalOptions="Center"
+                                                       LineBreakMode="TailTruncation"
+                                                       MaximumWidthRequest="220" />
+                                                <Image Source="close_purple.png"
+                                                       WidthRequest="14"
+                                                       HeightRequest="14"
+                                                       Aspect="AspectFit"
+                                                       VerticalOptions="Center">
+                                                    <Image.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding BindingContext.RemoveAttachmentCommand, Source={x:Reference AssistantPage}}"
+                                                                              CommandParameter="{Binding .}" />
+                                                    </Image.GestureRecognizers>
+                                                </Image>
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
+                            <Border HeightRequest="56"
+                                    BackgroundColor="#17122B"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 999"
+                                    Padding="22,0">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" VerticalOptions="Center">
+                                    <Image Source="paperclip_purple.png"
+                                           WidthRequest="24"
+                                           HeightRequest="24"
+                                           Aspect="AspectFit"
+                                           VerticalOptions="Center">
+                                        <Image.Behaviors>
+                                            <behaviors:TapScaleBehavior />
+                                        </Image.Behaviors>
+                                        <Image.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding AttachFileCommand}" />
+                                        </Image.GestureRecognizers>
+                                    </Image>
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding ComposerText}"
+                                           Placeholder="Ask me anything."
+                                           PlaceholderColor="{StaticResource NoahTextSecondary}"
+                                           TextColor="White"
+                                           ReturnCommand="{Binding PrimaryActionCommand}"
+                                           BackgroundColor="Transparent"
+                                           FontSize="17"
+                                           HeightRequest="44" />
+                                    <Image Grid.Column="2"
+                                           Source="camera_outline_purple.png"
+                                           WidthRequest="26"
+                                           HeightRequest="26"
+                                           Aspect="AspectFit"
+                                           VerticalOptions="Center">
+                                        <Image.Behaviors>
+                                            <behaviors:TapScaleBehavior />
+                                        </Image.Behaviors>
+                                        <Image.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding CapturePhotoAttachmentCommand}" />
+                                        </Image.GestureRecognizers>
+                                    </Image>
+                                </Grid>
+                            </Border>
+                            <Border Grid.Column="1"
+                                    BackgroundColor="{StaticResource NoahAccent}"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 999"
+                                    WidthRequest="56"
+                                    HeightRequest="56">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding PrimaryActionCommand}" />
+                                </Border.GestureRecognizers>
+                                <Image Source="{Binding CurrentPrimaryActionIcon}"
+                                       WidthRequest="28"
+                                       HeightRequest="28"
+                                       Aspect="AspectFit"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Grid x:Name="MobileLayout" IsVisible="True" RowDefinitions="Auto,Auto,*,Auto" BackgroundColor="{StaticResource NoahBackground}">
+            <Grid Padding="24,18,24,14" ColumnDefinitions="Auto,*">
+                <Image Source="menu_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" HorizontalOptions="Start" VerticalOptions="Center">
+                    <Image.Behaviors><behaviors:TapScaleBehavior /></Image.Behaviors>
+                    <Image.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleDrawerCommand}" /></Image.GestureRecognizers>
+                </Image>
+            </Grid>
+            <BoxView Grid.Row="1" HeightRequest="3" BackgroundColor="#17122B" />
+
+            <Grid Grid.Row="2" Padding="14,14,14,0">
+                <CollectionView ItemsSource="{Binding Messages}" SelectionMode="None" Margin="0,0,0,8">
+                    <CollectionView.EmptyView>
+                        <VerticalStackLayout Spacing="6" VerticalOptions="Center" HorizontalOptions="Center">
+                            <Label Text="No messages yet" FontSize="16" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" HorizontalTextAlignment="Center" />
+                            <Label Text="Create or select a chat, then say hi." FontSize="12" TextColor="{StaticResource NoahTextSecondary}" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </CollectionView.EmptyView>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:ChatMessageItem">
+                            <Grid Padding="0,0,0,14" ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout IsVisible="{Binding IsFromAssistant}" HorizontalOptions="Start" MaximumWidthRequest="310" Spacing="4">
+                                    <Label Text="{Binding MetaText}" IsVisible="{Binding HasMetaText}" FontSize="13" TextColor="{StaticResource NoahTextSecondary}" />
+                                    <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="14" />
+                                    <Label Text="{Binding TimestampText}" FontSize="10" TextColor="{StaticResource NoahTextSecondary}" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1" IsVisible="{Binding IsFromUser}" HorizontalOptions="End" MaximumWidthRequest="300" Spacing="4">
+                                    <Border BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 18,0,18,18" Padding="14,9" HorizontalOptions="End">
+                                        <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="14" />
+                                    </Border>
+                                    <Label Text="{Binding TimestampText}" FontSize="10" TextColor="{StaticResource NoahTextSecondary}" HorizontalOptions="End" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+                <Border BackgroundColor="#17122B" Stroke="{StaticResource NoahAccent}" StrokeThickness="0.8" StrokeShape="RoundRectangle 12" Padding="14,8" HorizontalOptions="Center" VerticalOptions="Start" Margin="0,0,0,8" IsVisible="{Binding HasStatusText}">
+                    <Label Text="{Binding StatusText}" FontSize="11" TextColor="{StaticResource NoahTextPrimary}" />
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="3" Padding="10,8,8,14" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <VerticalStackLayout Spacing="8">
+                    <ScrollView Orientation="Horizontal"
+                                HorizontalScrollBarVisibility="Never"
+                                IsVisible="{Binding HasDraftAttachments}">
+                        <HorizontalStackLayout Spacing="8"
+                                               BindableLayout.ItemsSource="{Binding DraftAttachments}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="models:AssistantDraftAttachment">
+                                    <Border BackgroundColor="#17122B"
+                                            Stroke="{StaticResource NoahAccent}"
+                                            StrokeThickness="0.6"
+                                            StrokeShape="RoundRectangle 999"
+                                            Padding="10,7">
+                                        <HorizontalStackLayout Spacing="7">
+                                            <Image Source="{Binding IconSource}"
+                                                   WidthRequest="15"
+                                                   HeightRequest="15"
+                                                   Aspect="AspectFit"
+                                                   VerticalOptions="Center" />
+                                            <Label Text="{Binding DisplayName}"
+                                                   FontSize="11"
+                                                   TextColor="{StaticResource NoahTextPrimary}"
+                                                   VerticalOptions="Center"
+                                                   LineBreakMode="TailTruncation"
+                                                   MaximumWidthRequest="150" />
+                                            <Image Source="close_purple.png"
+                                                   WidthRequest="13"
+                                                   HeightRequest="13"
+                                                   Aspect="AspectFit"
+                                                   VerticalOptions="Center">
+                                                <Image.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding BindingContext.RemoveAttachmentCommand, Source={x:Reference AssistantPage}}"
+                                                                          CommandParameter="{Binding .}" />
+                                                </Image.GestureRecognizers>
+                                            </Image>
+                                        </HorizontalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </HorizontalStackLayout>
+                    </ScrollView>
+
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Border HeightRequest="50" BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="16,0">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                <Image Source="paperclip_purple.png" WidthRequest="22" HeightRequest="22" Aspect="AspectFit" VerticalOptions="Center">
+                                    <Image.Behaviors>
+                                        <behaviors:TapScaleBehavior />
+                                    </Image.Behaviors>
+                                    <Image.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding AttachFileCommand}" />
+                                    </Image.GestureRecognizers>
+                                </Image>
+                                <Entry Grid.Column="1" Text="{Binding ComposerText}" Placeholder="Ask me anything." PlaceholderColor="{StaticResource NoahTextSecondary}" TextColor="White" ReturnCommand="{Binding PrimaryActionCommand}" BackgroundColor="Transparent" FontSize="14" HeightRequest="42" />
+                                <Image Grid.Column="2" Source="camera_outline_purple.png" WidthRequest="24" HeightRequest="24" Aspect="AspectFit" VerticalOptions="Center">
+                                    <Image.Behaviors>
+                                        <behaviors:TapScaleBehavior />
+                                    </Image.Behaviors>
+                                    <Image.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding CapturePhotoAttachmentCommand}" />
+                                    </Image.GestureRecognizers>
+                                </Image>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Column="1" BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 999" WidthRequest="50" HeightRequest="50">
+                            <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding PrimaryActionCommand}" /></Border.GestureRecognizers>
+                            <Image Source="{Binding CurrentPrimaryActionIcon}" WidthRequest="24" HeightRequest="24" Aspect="AspectFit" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                </VerticalStackLayout>
+            </Grid>
+
+            <Grid Grid.RowSpan="4" IsVisible="{Binding IsDrawerOpen}" ColumnDefinitions="288,*">
+                <Grid Grid.Column="1" BackgroundColor="#66000000">
+                    <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding CloseDrawerCommand}" /></Grid.GestureRecognizers>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,4">
+                    <Grid BackgroundColor="{StaticResource NoahSurface}" Padding="14,14,10,0" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,0,0,18">
+                            <Image Source="cog_outline_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" HorizontalOptions="Start" VerticalOptions="Center">
+                                <Image.Behaviors><behaviors:TapScaleBehavior /></Image.Behaviors>
+                                <Image.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSettingsCommand}" /></Image.GestureRecognizers>
+                            </Image>
+                            <Image Grid.Column="1" Source="close_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" HorizontalOptions="End" VerticalOptions="Center">
+                                <Image.Behaviors><behaviors:TapScaleBehavior /></Image.Behaviors>
+                                <Image.GestureRecognizers><TapGestureRecognizer Command="{Binding CloseDrawerCommand}" /></Image.GestureRecognizers>
+                            </Image>
+                        </Grid>
+
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="12" Padding="6,9" Margin="0,0,0,4">
+                            <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
+                            <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding CreateChatCommand}" /></Grid.GestureRecognizers>
+                            <Image Source="newchat_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Create new chat" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                        </Grid>
+
+                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12" Padding="6,9" Margin="0,0,0,10">
+                            <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
+                            <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSearchCommand}" /></Grid.GestureRecognizers>
+                            <Image Source="magnify_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Search in chats" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                        </Grid>
+
+                        <VerticalStackLayout Grid.Row="3" Spacing="8" Margin="0,0,0,14">
+                            <components:SearchEntryView IsVisible="{Binding IsSearchVisible}" Text="{Binding SearchText}" Placeholder="Search chats" IconSource="magnify_purple.png" IconWidth="17" IconHeight="17" FontSize="12" ControlHeight="46" EntryHeight="38" />
+                            <Label Text="{Binding ArchivedChatsToggleText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" Padding="8,0">
+                                <Label.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleArchivedChatsCommand}" /></Label.GestureRecognizers>
+                            </Label>
+                        </VerticalStackLayout>
+
+                        <CollectionView Grid.Row="4" ItemsSource="{Binding Chats}" SelectionMode="None" Margin="0,0,0,12">
+                            <CollectionView.EmptyView><Label Text="{Binding ChatEmptyStateText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" Margin="8,10,8,0" /></CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:AssistantChatListItem">
+                                    <VerticalStackLayout Spacing="8" Margin="0,0,0,10">
+                                        <Border BackgroundColor="{StaticResource NoahCard}" Stroke="#17122B" StrokeThickness="1" StrokeShape="RoundRectangle 18" Padding="12,0" HeightRequest="64">
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True"><Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" /><Setter Property="Stroke" Value="{StaticResource NoahCardSelected}" /></DataTrigger>
+                                            </Border.Triggers>
+                                            <Border.Behaviors><behaviors:TapScaleBehavior /><behaviors:LongPressBehavior Command="{Binding BindingContext.ShowChatActionsCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.Behaviors>
+                                            <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.SelectChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                            <Label Text="{Binding Title}" FontSize="14" TextColor="{StaticResource NoahTextPrimary}" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                                        </Border>
+
+                                        <Border IsVisible="{Binding IsActionMenuVisible}" BackgroundColor="#0E0B17" Stroke="{StaticResource NoahAccent}" StrokeThickness="0.6" StrokeShape="RoundRectangle 14" Padding="10">
+                                            <HorizontalStackLayout Spacing="8">
+                                                <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="12,8" HorizontalOptions="Fill">
+                                                    <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.RenameChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                    <Label Text="Rename" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                                </Border>
+                                                <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="12,8" HorizontalOptions="Fill">
+                                                    <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.ToggleArchiveChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                    <Label Text="{Binding ArchiveActionLabel}" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                                </Border>
+                                                <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="12,8" HorizontalOptions="Fill">
+                                                    <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.DeleteChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                    <Label Text="Delete" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                                </Border>
+                                            </HorizontalStackLayout>
+                                        </Border>
+
+                                        <Border IsVisible="{Binding IsRenameEditorVisible}" BackgroundColor="#0E0B17" Stroke="{StaticResource NoahAccent}" StrokeThickness="0.6" StrokeShape="RoundRectangle 14" Padding="10">
+                                            <VerticalStackLayout Spacing="8">
+                                                <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="12,0">
+                                                    <Entry Text="{Binding EditableTitle}" Placeholder="Chat title" PlaceholderColor="{StaticResource NoahTextMuted}" TextColor="{StaticResource NoahTextPrimary}" BackgroundColor="Transparent" FontSize="12" HeightRequest="38" />
+                                                </Border>
+                                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                    <Border BackgroundColor="Transparent" Stroke="{StaticResource NoahAccent}" StrokeThickness="1" StrokeShape="RoundRectangle 999" Padding="0,8">
+                                                        <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.CancelRenameChatCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                        <Label Text="Cancel" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" HorizontalOptions="Center" />
+                                                    </Border>
+                                                    <Border Grid.Column="1" BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="0,8">
+                                                        <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.SaveChatRenameCommand, Source={x:Reference AssistantPage}}" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                        <Label Text="Save" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" />
+                                                    </Border>
+                                                </Grid>
+                                            </VerticalStackLayout>
+                                        </Border>
+                                    </VerticalStackLayout>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <views:MobileNavigationFooterView Grid.Row="5" IsChatSelected="True" NavigateHomeCommand="{Binding NavigateHomeCommand}" NavigateMileageCommand="{Binding NavigateMileageCommand}" NavigateNotesCommand="{Binding NavigateNotesCommand}" NavigateCalendarCommand="{Binding NavigateCalendarCommand}" NavigateChatCommand="{Binding NavigateChatCommand}" />
+                    </Grid>
+                    <BoxView Grid.Column="1" BackgroundColor="#171126" />
+                </Grid>
+            </Grid>
+
+            <Grid Grid.RowSpan="4"
+                  WidthRequest="24"
+                  HorizontalOptions="Start"
+                  BackgroundColor="Transparent">
+                <Grid.GestureRecognizers>
+                    <PanGestureRecognizer PanUpdated="OnMobileDrawerPanUpdated" />
+                </Grid.GestureRecognizers>
+            </Grid>
+        </Grid>
+
+        <Grid BackgroundColor="#99000000" IsVisible="{Binding IsSettingsVisible}">
+            <views:SettingsModalView x:Name="SettingsModal"
+                                     WidthRequest="330"
+                                     HorizontalOptions="Center"
+                                     VerticalOptions="Center" />
+        </Grid>
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="LayoutStates">
+                <VisualState x:Name="MobileState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout" Property="IsVisible" Value="True" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="False" />
+                        <Setter TargetName="SettingsModal" Property="WidthRequest" Value="330" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="DesktopState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout" Property="IsVisible" Value="False" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="True" />
+                        <Setter TargetName="SettingsModal" Property="WidthRequest" Value="720" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
 </ContentPage>

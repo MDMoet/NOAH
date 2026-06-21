@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="Client.Views.MileageAdaptiveView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:behaviors="clr-namespace:Client.Behaviors"
+    xmlns:controls="clr-namespace:Client.Controls"
+    xmlns:models="clr-namespace:Client.Models"
+    xmlns:views="clr-namespace:Client.Views"
+    xmlns:viewmodels="clr-namespace:Client.ViewModels"
+    x:DataType="viewmodels:HomeViewModel"
+    BackgroundColor="{StaticResource NoahBackground}">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+
+            <!-- Mileage styles -->
+            <Style x:Key="OdometerValueStyle" TargetType="Label">
+                <Setter Property="FontSize"       Value="30" />
+                <Setter Property="FontFamily"     Value="OpenSansSemibold" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="TextColor"      Value="{StaticResource NoahAccent}" />
+            </Style>
+
+            <Style x:Key="StatValueStyle" TargetType="Label">
+                <Setter Property="FontSize"       Value="18" />
+                <Setter Property="FontFamily"     Value="OpenSansSemibold" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="TextColor"      Value="{StaticResource NoahAccent}" />
+            </Style>
+
+            <Style x:Key="CaptionStyle" TargetType="Label">
+                <Setter Property="FontSize"   Value="10" />
+                <Setter Property="TextColor"  Value="{StaticResource NoahTextMuted}" />
+            </Style>
+
+            <!-- Action button styles -->
+            <Style x:Key="ActionButtonStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="StrokeShape"     Value="RoundRectangle 10" />
+                <Setter Property="Stroke"          Value="{StaticResource NoahAccent}" />
+                <Setter Property="StrokeThickness" Value="0.8" />
+                <Setter Property="Padding"         Value="0,12" />
+                <Setter Property="HorizontalOptions" Value="Fill" />
+            </Style>
+
+            <Style x:Key="PrimaryButtonStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{StaticResource NoahAccent}" />
+                <Setter Property="StrokeShape"     Value="RoundRectangle 10" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="Padding"         Value="0,12" />
+                <Setter Property="HorizontalOptions" Value="Fill" />
+            </Style>
+
+            <Style x:Key="SourceChipStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="StrokeShape"     Value="RoundRectangle 999" />
+                <Setter Property="Stroke"          Value="{StaticResource NoahAccent}" />
+                <Setter Property="StrokeThickness" Value="0.7" />
+                <Setter Property="Padding"         Value="8,2" />
+            </Style>
+
+        </ResourceDictionary>
+    </ContentView.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.Behaviors>
+            <behaviors:AdaptiveStateBehavior
+                Breakpoint="720"
+                MobileState="MobileState"
+                DesktopState="DesktopState" />
+        </Grid.Behaviors>
+
+        <!-- Desktop layout -->
+        <Grid x:Name="DesktopLayout"
+              IsVisible="False"
+              RowDefinitions="*">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="{Binding DesktopHomeSidebarWidth}" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="220" />
+            </Grid.ColumnDefinitions>
+
+            <!-- History sidebar -->
+            <Grid Grid.Column="0"
+                  BackgroundColor="{StaticResource NoahSurface}"
+                  RowDefinitions="Auto,Auto,*"
+                  Padding="12,14">
+
+                <views:DesktopNavigationView Grid.Row="0"
+                                             IsMileageSelected="True"
+                                             ShowSettings="False"
+                                             NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                             NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                             NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                             NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                             NavigateChatCommand="{Binding NavigateChatCommand}"
+                                             ToggleSettingsCommand="{Binding ToggleSettingsCommand}"
+                                             HeightRequest="38" />
+
+                <Label Grid.Row="1"
+                       Text="History"
+                       Style="{StaticResource NoahSectionLabel}"
+                       Margin="2,14,0,10" />
+
+                <CollectionView Grid.Row="2"
+                                ItemsSource="{Binding RecentMileage}"
+                                SelectionMode="None"
+                                VerticalScrollBarVisibility="Never">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:MileageEntry">
+                            <Border Style="{StaticResource NoahCardBorder}"
+                                    Margin="0,0,0,10"
+                                    Padding="12,10">
+                                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
+
+                                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                        <Label Text="{Binding OdometerDisplay}"
+                                               FontSize="18"
+                                               FontFamily="OpenSansSemibold"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NoahAccent}" />
+                                        <Label Grid.Column="1"
+                                               Text="{Binding DateDisplay}"
+                                               FontSize="9"
+                                               TextColor="{StaticResource NoahTextMuted}"
+                                               HorizontalOptions="End"
+                                               HorizontalTextAlignment="End" />
+                                    </Grid>
+
+                                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                            <Label Text="Trip"
+                                                   Style="{StaticResource CaptionStyle}" />
+                                            <Label Text="{Binding TripDisplay}"
+                                                   FontSize="12"
+                                                   FontFamily="OpenSansSemibold"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource NoahTextPrimary}" />
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Grid.Column="1"
+                                                             Spacing="1"
+                                                             HorizontalOptions="End">
+                                            <Label Text="Source"
+                                                   Style="{StaticResource CaptionStyle}"
+                                                   HorizontalOptions="End" />
+                                            <Border Style="{StaticResource SourceChipStyle}">
+                                                <Label Text="{Binding SourceDisplay}"
+                                                       FontSize="10"
+                                                       FontFamily="OpenSansSemibold"
+                                                       FontAttributes="Bold"
+                                                       TextColor="{StaticResource NoahAccent}" />
+                                            </Border>
+                                        </VerticalStackLayout>
+                                    </Grid>
+
+                                    <Label Grid.Row="2"
+                                           Text="{Binding Note}"
+                                           FontSize="9"
+                                           TextColor="{StaticResource NoahTextMuted}"
+                                           LineBreakMode="WordWrap" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Grid>
+
+            <!-- Divider -->
+            <BoxView Grid.Column="1" Color="#171126" WidthRequest="6" />
+
+            <!-- Odometer graph -->
+            <Border Grid.Column="2"
+                    BackgroundColor="{StaticResource NoahCard}"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{StaticResource NoahCard}"
+                    StrokeThickness="0.6"
+                    Margin="20,20"
+                    Padding="18,16"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill">
+                <Grid RowDefinitions="Auto,*" RowSpacing="10">
+                    <VerticalStackLayout Grid.Row="0" Spacing="1">
+                        <Label Text="Odometer trend"
+                               FontSize="16"
+                               FontFamily="OpenSansSemibold"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NoahTextPrimary}" />
+                        <Label Text="Reading by entry date"
+                               Style="{StaticResource CaptionStyle}" />
+                    </VerticalStackLayout>
+
+                    <controls:MileageOdometerChartView Grid.Row="1"
+                                                       Entries="{Binding RecentMileage}"
+                                                       LineColor="{StaticResource NoahAccent}"
+                                                       AxisColor="{StaticResource NoahTextMuted}"
+                                                       GridLineColor="#241A36"
+                                                       LabelColor="{StaticResource NoahTextPrimary}"
+                                                       MutedLabelColor="{StaticResource NoahTextMuted}"
+                                                       HorizontalOptions="Fill"
+                                                       VerticalOptions="Fill" />
+                </Grid>
+            </Border>
+            <!-- Summary panel -->
+            <Grid Grid.Column="3"
+                  BackgroundColor="{StaticResource NoahSurface}"
+                  RowDefinitions="Auto,Auto,Auto,Auto,*"
+                  Padding="14,16">
+
+                <Border Grid.Row="0"
+                        Style="{StaticResource NoahCardBorder}"
+                        Padding="14,12"
+                        Margin="0,0,0,10">
+                    <VerticalStackLayout Spacing="3">
+                        <Label Text="Current odometer"
+                               Style="{StaticResource CaptionStyle}" />
+                        <Label Text="{Binding OdometerKm, StringFormat='{0:N0} km'}"
+                               Style="{StaticResource OdometerValueStyle}" />
+                        <Label Text="{Binding LastRecorded, StringFormat='Last recorded at: {0:HH:mm}'}"
+                               Style="{StaticResource CaptionStyle}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Grid Grid.Row="1"
+                      ColumnDefinitions="*,*"
+                      ColumnSpacing="10"
+                      Margin="0,0,0,10">
+                    <Border Grid.Column="0"
+                            Style="{StaticResource NoahCardBorder}"
+                            Padding="12,10">
+                        <VerticalStackLayout Spacing="3">
+                            <Label Text="{Binding LastTripKm, StringFormat='{0:N1} km'}"
+                                   Style="{StaticResource StatValueStyle}" />
+                            <Label Text="Last trip"
+                                   Style="{StaticResource CaptionStyle}" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="1"
+                            Style="{StaticResource NoahCardBorder}"
+                            Padding="12,10">
+                        <VerticalStackLayout Spacing="3">
+                            <Label Text="{Binding ThisMonthKm, StringFormat='{0:N1} km'}"
+                                   Style="{StaticResource StatValueStyle}" />
+                            <Label Text="This month"
+                                   Style="{StaticResource CaptionStyle}" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <!-- Mileage actions -->
+                <Border Grid.Row="2"
+                        Style="{StaticResource ActionButtonStyle}"
+                        Margin="0,0,0,8">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ManualMileageEntryCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Manual entry"
+                           FontSize="13"
+                           FontFamily="OpenSansSemibold"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NoahAccent}"
+                           HorizontalOptions="Center" />
+                </Border>
+
+                <Border Grid.Row="3"
+                        Style="{StaticResource PrimaryButtonStyle}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ScanOdometerCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Scan odometer"
+                           FontSize="13"
+                           FontFamily="OpenSansSemibold"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           HorizontalOptions="Center" />
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Mobile layout -->
+        <Grid x:Name="MobileLayout"
+              IsVisible="True"
+              RowDefinitions="*,Auto">
+
+            <ScrollView Grid.Row="0" VerticalScrollBarVisibility="Never">
+                <VerticalStackLayout Padding="14,20,14,16" Spacing="10">
+
+                    <Border Style="{StaticResource NoahCardBorder}" Padding="14,12">
+                        <VerticalStackLayout Spacing="3">
+                            <Label Text="Current odometer"
+                                   Style="{StaticResource CaptionStyle}" />
+                            <Label Text="{Binding OdometerKm, StringFormat='{0:N0} km'}"
+                                   Style="{StaticResource OdometerValueStyle}" />
+                            <Label Text="{Binding LastRecorded, StringFormat='Last recorded at: {0:HH:mm}'}"
+                                   Style="{StaticResource CaptionStyle}" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Border Grid.Column="0"
+                                Style="{StaticResource NoahCardBorder}"
+                                Padding="12,10">
+                            <VerticalStackLayout Spacing="3">
+                                <Label Text="{Binding LastTripKm, StringFormat='{0:N1} km'}"
+                                       Style="{StaticResource StatValueStyle}" />
+                                <Label Text="Last trip"
+                                       Style="{StaticResource CaptionStyle}" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Style="{StaticResource NoahCardBorder}"
+                                Padding="12,10">
+                            <VerticalStackLayout Spacing="3">
+                                <Label Text="{Binding ThisMonthKm, StringFormat='{0:N1} km'}"
+                                       Style="{StaticResource StatValueStyle}" />
+                                <Label Text="This month"
+                                       Style="{StaticResource CaptionStyle}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Border Style="{StaticResource NoahCardBorder}"
+                            Padding="12,10">
+                        <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                            <VerticalStackLayout Grid.Row="0" Spacing="1">
+                                <Label Text="Odometer trend"
+                                       FontSize="14"
+                                       FontFamily="OpenSansSemibold"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NoahTextPrimary}" />
+                                <Label Text="Reading by entry date"
+                                       Style="{StaticResource CaptionStyle}" />
+                            </VerticalStackLayout>
+
+                            <controls:MileageOdometerChartView Grid.Row="1"
+                                                               Entries="{Binding RecentMileage}"
+                                                               LineColor="{StaticResource NoahAccent}"
+                                                               AxisColor="{StaticResource NoahTextMuted}"
+                                                               GridLineColor="#241A36"
+                                                               LabelColor="{StaticResource NoahTextPrimary}"
+                                                               MutedLabelColor="{StaticResource NoahTextMuted}"
+                                                               HeightRequest="220"
+                                                               HorizontalOptions="Fill" />
+                        </Grid>
+                    </Border>
+                    <!-- Mileage actions -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Border Grid.Column="0"
+                                Style="{StaticResource PrimaryButtonStyle}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ScanOdometerCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Scan odometer"
+                                   FontSize="12"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="White"
+                                   HorizontalOptions="Center" />
+                        </Border>
+                        <Border Grid.Column="1"
+                                Style="{StaticResource ActionButtonStyle}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ManualMileageEntryCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Manual entry"
+                                   FontSize="12"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahAccent}"
+                                   HorizontalOptions="Center" />
+                        </Border>
+                    </Grid>
+
+                    <!-- History -->
+                    <Label Text="History"
+                           Style="{StaticResource NoahSectionLabel}"
+                           Margin="2,6,0,4" />
+
+                    <CollectionView ItemsSource="{Binding RecentMileage}"
+                                    SelectionMode="None"
+                                    VerticalScrollBarVisibility="Never">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:MileageEntry">
+                                <Border Style="{StaticResource NoahCardBorder}"
+                                        Margin="0,0,0,10"
+                                        Padding="12,10">
+                                    <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+
+                                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                            <Label Text="{Binding OdometerDisplay}"
+                                                   FontSize="18"
+                                                   FontFamily="OpenSansSemibold"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource NoahAccent}" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding DateDisplay}"
+                                                   FontSize="9"
+                                                   TextColor="{StaticResource NoahTextMuted}"
+                                                   HorizontalOptions="End"
+                                                   HorizontalTextAlignment="End" />
+                                        </Grid>
+
+                                        <Grid Grid.Row="1"
+                                              ColumnDefinitions="*,Auto"
+                                              VerticalOptions="Center">
+                                            <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                                <Label Text="Trip"
+                                                       Style="{StaticResource CaptionStyle}" />
+                                                <Label Text="{Binding TripDisplay}"
+                                                       FontSize="12"
+                                                       FontFamily="OpenSansSemibold"
+                                                       FontAttributes="Bold"
+                                                       TextColor="{StaticResource NoahTextPrimary}" />
+                                            </VerticalStackLayout>
+                                            <VerticalStackLayout Grid.Column="1"
+                                                                 Spacing="1"
+                                                                 HorizontalOptions="End">
+                                                <Label Text="Source"
+                                                       Style="{StaticResource CaptionStyle}"
+                                                       HorizontalOptions="End" />
+                                                <Border Style="{StaticResource SourceChipStyle}">
+                                                    <Label Text="{Binding SourceDisplay}"
+                                                           FontSize="10"
+                                                           FontFamily="OpenSansSemibold"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{StaticResource NoahAccent}" />
+                                                </Border>
+                                            </VerticalStackLayout>
+                                        </Grid>
+
+                                        <Label Grid.Row="2"
+                                               Text="{Binding Note}"
+                                               FontSize="9"
+                                               TextColor="{StaticResource NoahTextMuted}"
+                                               LineBreakMode="WordWrap" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                </VerticalStackLayout>
+            </ScrollView>
+
+            <views:MobileNavigationFooterView Grid.Row="1"
+                                              NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                              NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                              NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                              NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                              NavigateChatCommand="{Binding NavigateChatCommand}"
+                                              IsMileageSelected="True" />
+        </Grid>
+
+        <!-- Visual states -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="LayoutStates">
+                <VisualState x:Name="MobileState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout"  Property="IsVisible" Value="True" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="False" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="DesktopState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout"  Property="IsVisible" Value="False" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="True" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+
+</ContentView>

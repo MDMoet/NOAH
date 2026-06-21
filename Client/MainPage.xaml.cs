@@ -1,23 +1,56 @@
-﻿namespace Client;
+using Client.ViewModels;
+
+namespace Client;
 
 public partial class MainPage : ContentPage
 {
-    int count = 0;
+    private readonly MainPageViewModel viewModel;
+    private bool isInitialized;
+    private bool isDrawerPanTriggered;
 
-    public MainPage()
+    public MainPage(MainPageViewModel viewModel)
     {
         InitializeComponent();
+        this.viewModel = viewModel;
+        BindingContext = viewModel;
     }
 
-    private void OnCounterClicked(object? sender, EventArgs e)
+    protected override async void OnAppearing()
     {
-        count++;
+        base.OnAppearing();
 
-        if (count == 1)
-            CounterBtn.Text = $"Clicked {count} time";
-        else
-            CounterBtn.Text = $"Clicked {count} times";
+        viewModel.PrepareForNavigation();
 
-        SemanticScreenReader.Announce(CounterBtn.Text);
+        if (isInitialized)
+        {
+            return;
+        }
+
+        isInitialized = true;
+        await viewModel.InitializeAsync();
+    }
+
+    private void OnMobileDrawerPanUpdated(object? sender, PanUpdatedEventArgs e)
+    {
+        switch (e.StatusType)
+        {
+            case GestureStatus.Started:
+                isDrawerPanTriggered = false;
+                break;
+
+            case GestureStatus.Running:
+                if (!isDrawerPanTriggered && e.TotalX >= 56)
+                {
+                    isDrawerPanTriggered = true;
+                    viewModel.OpenDrawer();
+                }
+
+                break;
+
+            case GestureStatus.Canceled:
+            case GestureStatus.Completed:
+                isDrawerPanTriggered = false;
+                break;
+        }
     }
 }

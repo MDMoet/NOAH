@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="Client.Views.Components.HomeActionDialogView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:viewmodels="clr-namespace:Client.ViewModels"
+    x:DataType="viewmodels:HomeViewModel">
+
+    <ContentView.Resources>
+        <Style x:Key="DialogFieldBorderStyle" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="#17122B" />
+            <Setter Property="StrokeThickness" Value="0" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="MinimumHeightRequest" Value="50" />
+            <Setter Property="VerticalOptions" Value="Center" />
+        </Style>
+
+        <Style x:Key="DialogEntryStyle" TargetType="Entry">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{StaticResource NoahTextPrimary}" />
+            <Setter Property="PlaceholderColor" Value="{StaticResource NoahTextMuted}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HeightRequest" Value="46" />
+            <Setter Property="VerticalOptions" Value="Center" />
+            <Setter Property="ClearButtonVisibility" Value="Never" />
+        </Style>
+
+        <Style x:Key="DialogEditorStyle" TargetType="Editor">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{StaticResource NoahTextPrimary}" />
+            <Setter Property="PlaceholderColor" Value="{StaticResource NoahTextMuted}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="AutoSize" Value="TextChanges" />
+            <Setter Property="HeightRequest" Value="88" />
+        </Style>
+
+        <Style x:Key="DialogDatePickerStyle" TargetType="DatePicker">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{StaticResource NoahTextPrimary}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HeightRequest" Value="42" />
+            <Setter Property="VerticalOptions" Value="Center" />
+            <Setter Property="HorizontalOptions" Value="Fill" />
+            <Setter Property="Margin" Value="0,-2,0,0" />
+        </Style>
+
+        <Style x:Key="DialogTimePickerStyle" TargetType="TimePicker">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{StaticResource NoahTextPrimary}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HeightRequest" Value="42" />
+            <Setter Property="VerticalOptions" Value="Center" />
+            <Setter Property="HorizontalOptions" Value="Fill" />
+            <Setter Property="Margin" Value="0,-2,0,0" />
+        </Style>
+
+        <Style x:Key="DialogPickerStyle" TargetType="Picker">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{StaticResource NoahTextPrimary}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HeightRequest" Value="46" />
+            <Setter Property="VerticalOptions" Value="Center" />
+            <Setter Property="HorizontalOptions" Value="Fill" />
+        </Style>
+    </ContentView.Resources>
+
+    <Grid BackgroundColor="#99000000"
+          Padding="24">
+        <Border BackgroundColor="{StaticResource NoahCard}"
+                Stroke="{StaticResource NoahAccent}"
+                StrokeThickness="2"
+                StrokeShape="RoundRectangle 14"
+                Padding="24"
+                MaximumWidthRequest="560"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="{Binding HomeDialogTitle}"
+                               FontSize="28"
+                               FontFamily="OpenSansSemibold"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NoahAccent}" />
+                        <Label Text="{Binding HomeDialogSubtitle}"
+                               FontSize="12"
+                               TextColor="{StaticResource NoahTextSecondary}" />
+                    </VerticalStackLayout>
+
+                    <Image Grid.Column="1"
+                           Source="close_purple.png"
+                           WidthRequest="26"
+                           HeightRequest="26"
+                           Aspect="AspectFit"
+                           VerticalOptions="Start">
+                        <Image.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding CancelHomeDialogCommand}" />
+                        </Image.GestureRecognizers>
+                    </Image>
+                </Grid>
+
+                <Border Grid.Row="1"
+                        IsVisible="{Binding HasHomeDialogError}"
+                        BackgroundColor="#17122B"
+                        Stroke="{StaticResource NoahAccent}"
+                        StrokeThickness="0.7"
+                        StrokeShape="RoundRectangle 10"
+                        Padding="12,8">
+                    <Label Text="{Binding HomeDialogError}"
+                           FontSize="12"
+                           TextColor="{StaticResource NoahTextPrimary}" />
+                </Border>
+
+                <ScrollView Grid.Row="2"
+                            MaximumHeightRequest="440"
+                            VerticalScrollBarVisibility="Never">
+                    <VerticalStackLayout Spacing="14">
+                        <VerticalStackLayout IsVisible="{Binding IsTaskDialogVisible}" Spacing="12">
+                            <Label Text="Task details" Style="{StaticResource NoahSectionLabel}" />
+                            <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                <Entry Style="{StaticResource DialogEntryStyle}"
+                                       Text="{Binding DialogTitleText}"
+                                       Placeholder="Task title" />
+                            </Border>
+                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
+                                <Editor Style="{StaticResource DialogEditorStyle}"
+                                        Text="{Binding DialogDescriptionText}"
+                                        Placeholder="Description" />
+                            </Border>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Grid VerticalOptions="Center">
+                                        <DatePicker Style="{StaticResource DialogDatePickerStyle}"
+                                                    Date="{Binding DialogDate}" />
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Grid VerticalOptions="Center">
+                                        <TimePicker Style="{StaticResource DialogTimePickerStyle}"
+                                                    Time="{Binding DialogTime}"
+                                                    IsEnabled="{Binding TaskHasDueTime}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="10">
+                                <CheckBox IsChecked="{Binding TaskHasDueTime}"
+                                          Color="{StaticResource NoahAccent}"
+                                          VerticalOptions="Center" />
+                                <Label Grid.Column="1"
+                                       Text="Due time"
+                                       FontSize="13"
+                                       TextColor="{StaticResource NoahTextPrimary}"
+                                       VerticalOptions="Center" />
+                                <Border Grid.Column="2" Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Picker Style="{StaticResource DialogPickerStyle}"
+                                            ItemsSource="{Binding TaskPriorityOptions}"
+                                            SelectedItem="{Binding SelectedTaskPriority}" />
+                                </Border>
+                            </Grid>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout IsVisible="{Binding IsReminderDialogVisible}" Spacing="12">
+                            <Label Text="Reminder details" Style="{StaticResource NoahSectionLabel}" />
+                            <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                <Entry Style="{StaticResource DialogEntryStyle}"
+                                       Text="{Binding DialogTitleText}"
+                                       Placeholder="Reminder title" />
+                            </Border>
+                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
+                                <Editor Style="{StaticResource DialogEditorStyle}"
+                                        Text="{Binding DialogDescriptionText}"
+                                        Placeholder="Message" />
+                            </Border>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Grid VerticalOptions="Center">
+                                        <DatePicker Style="{StaticResource DialogDatePickerStyle}"
+                                                    Date="{Binding DialogDate}" />
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Grid VerticalOptions="Center">
+                                        <TimePicker Style="{StaticResource DialogTimePickerStyle}"
+                                                    Time="{Binding DialogTime}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                            <HorizontalStackLayout Spacing="8">
+                                <CheckBox IsChecked="{Binding ReminderShouldNotify}"
+                                          Color="{StaticResource NoahAccent}"
+                                          VerticalOptions="Center" />
+                                <Label Text="Notify me"
+                                       FontSize="13"
+                                       TextColor="{StaticResource NoahTextPrimary}"
+                                       VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout IsVisible="{Binding IsMileageDialogVisible}" Spacing="12">
+                            <Label Text="Mileage details" Style="{StaticResource NoahSectionLabel}" />
+                            <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                <Entry Style="{StaticResource DialogEntryStyle}"
+                                       Text="{Binding MileageOdometerText}"
+                                       Placeholder="Odometer reading in km"
+                                       Keyboard="Telephone" />
+                            </Border>
+                            <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                <Entry Style="{StaticResource DialogEntryStyle}"
+                                       Text="{Binding MileageTripText}"
+                                       Placeholder="Trip distance in km (optional)"
+                                       Keyboard="Numeric" />
+                            </Border>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <Border Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Grid VerticalOptions="Center">
+                                        <DatePicker Style="{StaticResource DialogDatePickerStyle}"
+                                                    Date="{Binding DialogDate}" />
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource DialogFieldBorderStyle}">
+                                    <Grid VerticalOptions="Center">
+                                        <TimePicker Style="{StaticResource DialogTimePickerStyle}"
+                                                    Time="{Binding DialogTime}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <CheckBox IsChecked="{Binding MileageAttachCurrentLocation}"
+                                          Color="{StaticResource NoahAccent}"
+                                          VerticalOptions="Center" />
+                                <Label Grid.Column="1"
+                                       Text="Attach current location"
+                                       FontSize="13"
+                                       TextColor="{StaticResource NoahTextPrimary}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
+                                <Editor Style="{StaticResource DialogEditorStyle}"
+                                        Text="{Binding MileageNoteText}"
+                                        Placeholder="Note" />
+                            </Border>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <Border BackgroundColor="Transparent"
+                            Stroke="{StaticResource NoahAccent}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 999"
+                            Padding="0,11">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding CancelHomeDialogCommand}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="Cancel"
+                               HorizontalOptions="Center"
+                               FontSize="13"
+                               FontFamily="OpenSansSemibold"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NoahAccent}" />
+                    </Border>
+
+                    <Border Grid.Column="1"
+                            BackgroundColor="{StaticResource NoahAccent}"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 999"
+                            Padding="0,11">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SubmitHomeDialogCommand}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="{Binding HomeDialogPrimaryText}"
+                               HorizontalOptions="Center"
+                               FontSize="13"
+                               FontFamily="OpenSansSemibold"
+                               FontAttributes="Bold"
+                               TextColor="White" />
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</ContentView>

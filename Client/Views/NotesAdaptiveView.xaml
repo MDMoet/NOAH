@@ -1,0 +1,420 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="Client.Views.NotesAdaptiveView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:behaviors="clr-namespace:Client.Behaviors"
+    xmlns:components="clr-namespace:Client.Views.Components"
+    xmlns:models="clr-namespace:Client.Models"
+    xmlns:views="clr-namespace:Client.Views"
+    xmlns:viewmodels="clr-namespace:Client.ViewModels"
+    x:DataType="viewmodels:HomeViewModel"
+    BackgroundColor="{StaticResource NoahBackground}">
+
+    <Grid x:Name="RootGrid">
+        <Grid.Behaviors>
+            <behaviors:AdaptiveStateBehavior Breakpoint="720" MobileState="MobileState" DesktopState="DesktopState" />
+        </Grid.Behaviors>
+
+        <!-- Desktop layout -->
+        <Grid x:Name="DesktopLayout" IsVisible="False">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{Binding DesktopHomeSidebarWidth}" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid BackgroundColor="{StaticResource NoahSurface}"
+                      RowDefinitions="Auto,Auto,*"
+                      Padding="12,14">
+                    <views:DesktopNavigationView IsNotesSelected="{Binding IsNotesPageOpen}"
+                                                 ShowSettings="False"
+                                                 NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                                 NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                                 NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                                 NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                                 NavigateChatCommand="{Binding NavigateChatCommand}"
+                                                 ToggleSettingsCommand="{Binding ToggleSettingsCommand}"
+                                                 HeightRequest="38" />
+
+                    <components:SearchEntryView Grid.Row="1"
+                                                Text="{Binding SearchQuery}"
+                                                Placeholder="Search in/for notes."
+                                                IconSource="magnify_purple.png"
+                                                IconOpacity="0.7"
+                                                EntryTextColor="{StaticResource NoahTextPrimary}"
+                                                PlaceholderColor="{StaticResource NoahTextMuted}"
+                                                FontSize="12"
+                                                EntryHeight="38"
+                                                Margin="0,14,0,14" />
+
+                    <ScrollView Grid.Row="2"
+                                VerticalScrollBarVisibility="Never">
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="Recent notes:"
+                                   Style="{StaticResource NoahSectionLabel}"
+                                   Margin="2,0,0,0" />
+
+                            <VerticalStackLayout Spacing="0"
+                                                 BindableLayout.ItemsSource="{Binding RecentNotes}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:Note">
+                                        <Border Margin="0,0,0,8"
+                                                Padding="12,9"
+                                                BackgroundColor="#06050A"
+                                                StrokeShape="RoundRectangle 8"
+                                                StrokeThickness="0">
+                                            <Border.Behaviors>
+                                                <behaviors:TapScaleBehavior />
+                                            </Border.Behaviors>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding BindingContext.OpenNoteCommand, Source={x:Reference RootGrid}}"
+                                                                      CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <VisualStateManager.VisualStateGroups>
+                                                <VisualStateGroup x:Name="CommonStates">
+                                                    <VisualState x:Name="Normal" />
+                                                    <VisualState x:Name="PointerOver">
+                                                        <VisualState.Setters>
+                                                            <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+                                                            <Setter Property="StrokeThickness" Value="0.6" />
+                                                        </VisualState.Setters>
+                                                    </VisualState>
+                                                </VisualStateGroup>
+                                            </VisualStateManager.VisualStateGroups>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                    <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+                                                    <Setter Property="StrokeThickness" Value="0.6" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                            <Label Text="{Binding Title}"
+                                                   FontSize="11"
+                                                   TextColor="{StaticResource NoahTextPrimary}"
+                                                   LineBreakMode="TailTruncation" />
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout IsVisible="{Binding HasAllNotesExceptRecent}"
+                                                 Spacing="8"
+                                                 Margin="0,10,0,0">
+                                <Label Text="All notes:"
+                                       Style="{StaticResource NoahSectionLabel}"
+                                       Margin="2,0,0,0" />
+
+                                <VerticalStackLayout Spacing="0"
+                                                     BindableLayout.ItemsSource="{Binding AllNotesExceptRecent}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="models:Note">
+                                            <Border Margin="0,0,0,8"
+                                                    Padding="12,9"
+                                                    BackgroundColor="#06050A"
+                                                    StrokeShape="RoundRectangle 8"
+                                                    StrokeThickness="0">
+                                                <Border.Behaviors>
+                                                    <behaviors:TapScaleBehavior />
+                                                </Border.Behaviors>
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding BindingContext.OpenNoteCommand, Source={x:Reference RootGrid}}"
+                                                                          CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <VisualStateManager.VisualStateGroups>
+                                                    <VisualStateGroup x:Name="CommonStates">
+                                                        <VisualState x:Name="Normal" />
+                                                        <VisualState x:Name="PointerOver">
+                                                            <VisualState.Setters>
+                                                                <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                                <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+                                                                <Setter Property="StrokeThickness" Value="0.6" />
+                                                            </VisualState.Setters>
+                                                        </VisualState>
+                                                    </VisualStateGroup>
+                                                </VisualStateManager.VisualStateGroups>
+                                                <Border.Triggers>
+                                                    <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                                        <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                        <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+                                                        <Setter Property="StrokeThickness" Value="0.6" />
+                                                    </DataTrigger>
+                                                </Border.Triggers>
+                                                <Label Text="{Binding Title}"
+                                                       FontSize="11"
+                                                       TextColor="{StaticResource NoahTextPrimary}"
+                                                       LineBreakMode="TailTruncation" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </ScrollView>
+                </Grid>
+
+                <BoxView Grid.Column="1"
+                         Color="#171126" />
+
+                <Grid Grid.Column="2"
+                      Padding="80,54"
+                      RowDefinitions="Auto,Auto,*"
+                      RowSpacing="12"
+                      HorizontalOptions="Center">
+                    <Entry Text="{Binding NoteEditorTitle}"
+                           Placeholder="Note title"
+                           FontSize="28"
+                           FontFamily="OpenSansSemibold"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NoahTextPrimary}"
+                           PlaceholderColor="{StaticResource NoahTextMuted}"
+                           BackgroundColor="Transparent"
+                           ClearButtonVisibility="WhileEditing"
+                           MaximumWidthRequest="520"
+                           WidthRequest="320"
+                           HorizontalOptions="Start" />
+                    <Label Grid.Row="1"
+                           Text="{Binding NoteEditorStatusText}"
+                           FontSize="10"
+                           TextColor="{StaticResource NoahAccent}"
+                           HorizontalOptions="Start"
+                           IsVisible="{Binding HasNoteEditorStatusText}" />
+                    <Editor Grid.Row="2"
+                            Text="{Binding NoteEditorContent}"
+                            Placeholder="Start writing..."
+                            AutoSize="TextChanges"
+                            FontSize="13"
+                            TextColor="{StaticResource NoahTextPrimary}"
+                            PlaceholderColor="{StaticResource NoahTextMuted}"
+                            BackgroundColor="Transparent"
+                            MinimumHeightRequest="460"
+                            MaximumWidthRequest="1080"
+                            WidthRequest="920"
+                            HorizontalOptions="Start" />
+                </Grid>
+
+                <components:IconButtonView Grid.Column="0"
+                                           WidthRequest="44"
+                                           HeightRequest="44"
+                                           Margin="14"
+                                           HorizontalOptions="Start"
+                                           VerticalOptions="End"
+                                           CornerRadius="999"
+                                           NormalFillColor="{StaticResource NoahAccent}"
+                                           Command="{Binding CreateNoteCommand}"
+                                           IconSource="note_edit_outline.png"
+                                           IconWidth="22"
+                                           IconHeight="22" />
+            </Grid>
+        </Grid>
+
+        <!-- Mobile layout -->
+        <Grid x:Name="MobileLayout" IsVisible="True">
+            <Grid RowDefinitions="*,Auto">
+                <ScrollView IsVisible="{Binding IsNotesListVisible}"
+                            VerticalScrollBarVisibility="Never">
+                    <VerticalStackLayout Padding="14,14,14,22" Spacing="14">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <components:SearchEntryView Text="{Binding SearchQuery}"
+                                                        Placeholder="Search in/for notes."
+                                                        IconSource="magnify_purple.png"
+                                                        IconWidth="18"
+                                                        IconHeight="18"
+                                                        FieldBackgroundColor="#17122B"
+                                                        EntryTextColor="{StaticResource NoahTextPrimary}"
+                                                        PlaceholderColor="{StaticResource NoahTextMuted}"
+                                                        FontSize="10"
+                                                        EntryHeight="38" />
+                            <components:IconButtonView Grid.Column="1"
+                                                       WidthRequest="44"
+                                                       HeightRequest="44"
+                                                       CornerRadius="999"
+                                                       NormalFillColor="{StaticResource NoahAccent}"
+                                                       Command="{Binding CreateNoteCommand}"
+                                                       IconSource="note_edit_outline.png"
+                                                       IconWidth="22"
+                                                       IconHeight="22" />
+                        </Grid>
+
+                        <Label Text="Recent notes:"
+                               Style="{StaticResource NoahSectionLabel}" />
+
+                        <ScrollView Orientation="Horizontal"
+                                    HorizontalScrollBarVisibility="Never">
+                            <HorizontalStackLayout Spacing="8"
+                                                   BindableLayout.ItemsSource="{Binding RecentNotes}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:Note">
+                                        <Border WidthRequest="88"
+                                                HeightRequest="88"
+                                                BackgroundColor="{StaticResource NoahCardSelected}"
+                                                StrokeShape="RoundRectangle 8"
+                                                Padding="8">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding BindingContext.OpenNoteCommand, Source={x:Reference RootGrid}}"
+                                                                      CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Border.Behaviors>
+                                                <behaviors:TapScaleBehavior />
+                                            </Border.Behaviors>
+                                            <Label Text="{Binding Title}"
+                                                   TextColor="{StaticResource NoahTextPrimary}"
+                                                   FontSize="15"
+                                                   FontFamily="OpenSansSemibold"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"
+                                                   LineBreakMode="TailTruncation" />
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+
+                        <Label Text="All notes:"
+                               Style="{StaticResource NoahSectionLabel}"
+                               IsVisible="{Binding HasAllNotesExceptRecent}" />
+
+                        <CollectionView ItemsSource="{Binding AllNotesExceptRecent}"
+                                        IsVisible="{Binding HasAllNotesExceptRecent}"
+                                        SelectionMode="None"
+                                        HeightRequest="270">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:Note">
+                                    <Border Margin="0,0,0,8"
+                                            Padding="12,8"
+                                            BackgroundColor="#06050A"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 8">
+                                            <Border.Behaviors>
+                                                <behaviors:TapScaleBehavior />
+                                            </Border.Behaviors>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding BindingContext.OpenNoteCommand, Source={x:Reference RootGrid}}"
+                                                                      CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <VisualStateManager.VisualStateGroups>
+                                                <VisualStateGroup x:Name="CommonStates">
+                                                    <VisualState x:Name="Normal" />
+                                                    <VisualState x:Name="PointerOver">
+                                                        <VisualState.Setters>
+                                                            <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                            <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+                                                            <Setter Property="StrokeThickness" Value="0.6" />
+                                                        </VisualState.Setters>
+                                                    </VisualState>
+                                                </VisualStateGroup>
+                                            </VisualStateManager.VisualStateGroups>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
+                                                    <Setter Property="Stroke" Value="{StaticResource NoahAccent}" />
+                                                    <Setter Property="StrokeThickness" Value="0.6" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                            <Label Text="{Binding Title}"
+                                                   FontSize="11"
+                                                   TextColor="{StaticResource NoahTextPrimary}" />
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <Grid IsVisible="{Binding IsNoteDetailOpen}"
+                      RowDefinitions="Auto,*,Auto"
+                      Padding="14,14,14,8">
+                    <Image Source="close_purple.png"
+                           WidthRequest="22"
+                           HeightRequest="22"
+                           Aspect="AspectFit"
+                           HorizontalOptions="Start">
+                        <Image.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding BackToNotesCommand}" />
+                        </Image.GestureRecognizers>
+                    </Image>
+
+                    <ScrollView Grid.Row="1"
+                                Margin="0,20,0,0">
+                        <VerticalStackLayout Spacing="18">
+                            <Entry Text="{Binding NoteEditorTitle}"
+                                   Placeholder="Note title"
+                                   FontSize="26"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahTextPrimary}"
+                                   PlaceholderColor="{StaticResource NoahTextMuted}"
+                                   BackgroundColor="Transparent"
+                                   ClearButtonVisibility="WhileEditing" />
+                            <Label Text="{Binding NoteEditorStatusText}"
+                                   FontSize="10"
+                                   TextColor="{StaticResource NoahAccent}"
+                                   IsVisible="{Binding HasNoteEditorStatusText}" />
+                            <Editor Text="{Binding NoteEditorContent}"
+                                    Placeholder="Start writing..."
+                                    AutoSize="TextChanges"
+                                    FontSize="13"
+                                    TextColor="{StaticResource NoahTextPrimary}"
+                                    PlaceholderColor="{StaticResource NoahTextMuted}"
+                                    BackgroundColor="Transparent"
+                                    MinimumHeightRequest="320" />
+                        </VerticalStackLayout>
+                    </ScrollView>
+
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <components:SearchEntryView Text="{Binding SearchQuery}"
+                                                    Placeholder="Search in/for notes."
+                                                    IconSource="magnify_purple.png"
+                                                    IconWidth="18"
+                                                    IconHeight="18"
+                                                    FieldBackgroundColor="#17122B"
+                                                    EntryTextColor="{StaticResource NoahTextPrimary}"
+                                                    PlaceholderColor="{StaticResource NoahTextMuted}"
+                                                    FontSize="10"
+                                                    EntryHeight="38" />
+                        <components:IconButtonView Grid.Column="1"
+                                                   WidthRequest="44"
+                                                   HeightRequest="44"
+                                                   CornerRadius="999"
+                                                   NormalFillColor="{StaticResource NoahAccent}"
+                                                   Command="{Binding CreateNoteCommand}"
+                                                   IconSource="note_edit_outline.png"
+                                                   IconWidth="22"
+                                                   IconHeight="22" />
+                    </Grid>
+                </Grid>
+
+                <views:MobileNavigationFooterView Grid.Row="1"
+                                                  IsNotesSelected="True"
+                                                  NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                                  NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                                  NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                                  NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                                  NavigateChatCommand="{Binding NavigateChatCommand}"
+                                                  IsVisible="{Binding IsNotesListVisible}" />
+            </Grid>
+        </Grid>
+
+        <!-- Visual states to toggle which layout is visible -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="LayoutStates">
+                <VisualState x:Name="MobileState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout" Property="IsVisible" Value="True" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="False" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <VisualState x:Name="DesktopState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout" Property="IsVisible" Value="False" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="True" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+
+</ContentView>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="Client.Views.DesktopNavigationView"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:behaviors="clr-namespace:Client.Behaviors"
+    xmlns:components="clr-namespace:Client.Views.Components">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4" IsVisible="{Binding ShowTopNavigation, Source={x:Reference Root}}">
+            <components:IconButtonView WidthRequest="44" HeightRequest="44" HorizontalOptions="Center" VerticalOptions="Center" ButtonPadding="6" IsSelected="{Binding IsHomeSelected, Source={x:Reference Root}}" Command="{Binding NavigateHomeCommand, Source={x:Reference Root}}" IconSource="home_outline_purple.png" IconWidth="28" IconHeight="28" IconOpacity="0.50" SelectedIconOpacity="1" SelectedScale="1" SelectedShadowOpacity="0" />
+            <components:IconButtonView Grid.Column="1" WidthRequest="44" HeightRequest="44" HorizontalOptions="Center" VerticalOptions="Center" ButtonPadding="6" IsSelected="{Binding IsChatSelected, Source={x:Reference Root}}" Command="{Binding NavigateChatCommand, Source={x:Reference Root}}" IconSource="chat_outline_purple.png" IconWidth="28" IconHeight="28" IconOpacity="0.50" SelectedIconOpacity="1" SelectedScale="1" SelectedShadowOpacity="0" />
+            <components:IconButtonView Grid.Column="2" WidthRequest="44" HeightRequest="44" HorizontalOptions="Center" VerticalOptions="Center" ButtonPadding="6" IsSelected="{Binding IsNotesSelected, Source={x:Reference Root}}" Command="{Binding NavigateNotesCommand, Source={x:Reference Root}}" IconSource="note_outline_purple.png" IconWidth="28" IconHeight="28" IconOpacity="0.50" SelectedIconOpacity="1" SelectedScale="1" SelectedShadowOpacity="0" />
+            <components:IconButtonView Grid.Column="3" WidthRequest="44" HeightRequest="44" HorizontalOptions="Center" VerticalOptions="Center" ButtonPadding="6" IsSelected="{Binding IsCalendarSelected, Source={x:Reference Root}}" Command="{Binding NavigateCalendarCommand, Source={x:Reference Root}}" IconSource="calendar_purple.png" IconWidth="28" IconHeight="28" IconOpacity="0.50" SelectedIconOpacity="1" SelectedScale="1" SelectedShadowOpacity="0" />
+            <components:IconButtonView Grid.Column="4" WidthRequest="44" HeightRequest="44" HorizontalOptions="Center" VerticalOptions="Center" ButtonPadding="6" IsSelected="{Binding IsMileageSelected, Source={x:Reference Root}}" Command="{Binding NavigateMileageCommand, Source={x:Reference Root}}" IconSource="counter_purple.png" IconWidth="28" IconHeight="28" IconOpacity="0.50" SelectedIconOpacity="1" SelectedScale="1" SelectedShadowOpacity="0" />
+        </Grid>
+
+        <HorizontalStackLayout Grid.Row="2" Spacing="8" IsVisible="{Binding ShowSettings, Source={x:Reference Root}}" VerticalOptions="End">
+            <HorizontalStackLayout.Behaviors><behaviors:TapScaleBehavior /></HorizontalStackLayout.Behaviors>
+            <HorizontalStackLayout.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSettingsCommand, Source={x:Reference Root}}" /></HorizontalStackLayout.GestureRecognizers>
+            <Image Source="cog_outline_purple.png" WidthRequest="24" HeightRequest="24" Aspect="AspectFit" />
+            <Label Text="Settings" FontSize="12" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+        </HorizontalStackLayout>
+    </Grid>
+</ContentView>

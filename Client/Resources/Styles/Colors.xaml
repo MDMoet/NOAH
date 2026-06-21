@@ -27,6 +27,15 @@
     <Color x:Key="Gray900">#212121</Color>
     <Color x:Key="Gray950">#141414</Color>
 
+    <Color x:Key="NoahBackground">#0D0D14</Color>
+    <Color x:Key="NoahSurface">#0A0A12</Color>
+    <Color x:Key="NoahCard">#110D20</Color>
+    <Color x:Key="NoahCardSelected">#1A1030</Color>
+    <Color x:Key="NoahAccent">#8B5CF6</Color>
+    <Color x:Key="NoahTextPrimary">#E8E4F0</Color>
+    <Color x:Key="NoahTextSecondary">#8A7FA0</Color>
+    <Color x:Key="NoahTextMuted">#5A5270</Color>
+
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}"/>
     <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource Secondary}"/>
     <SolidColorBrush x:Key="TertiaryBrush" Color="{StaticResource Tertiary}"/>

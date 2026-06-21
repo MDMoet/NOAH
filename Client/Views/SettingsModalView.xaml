@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="Client.Views.SettingsModalView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <Border BackgroundColor="{StaticResource NoahCard}"
+            Stroke="{StaticResource NoahAccent}"
+            StrokeThickness="3"
+            StrokeShape="RoundRectangle 10"
+            Padding="34,26">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="16">
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Text="Settings"
+                       FontSize="34"
+                       FontFamily="OpenSansSemibold"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NoahAccent}"
+                       VerticalOptions="Center" />
+
+                <Image Grid.Column="1"
+                       Source="close_purple.png"
+                       WidthRequest="28"
+                       HeightRequest="28"
+                       Aspect="AspectFit"
+                       VerticalOptions="Center">
+                    <Image.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding SaveSettingsCommand}" />
+                    </Image.GestureRecognizers>
+                </Image>
+            </Grid>
+
+            <Label Grid.Row="1"
+                   Text="Assistant"
+                   Margin="10,20,0,0"
+                   FontSize="18"
+                   FontFamily="OpenSansSemibold"
+                   FontAttributes="Bold"
+                   TextColor="{StaticResource NoahAccent}" />
+
+            <VerticalStackLayout Grid.Row="2" Spacing="6" Margin="10,0,10,0">
+                <Label Text="Preferred response mode"
+                       FontSize="14"
+                       FontFamily="OpenSansSemibold"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NoahAccent}" />
+
+                <Border BackgroundColor="Black"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 999"
+                        HeightRequest="38"
+                        Padding="5,4">
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                        <Border StrokeThickness="0" StrokeShape="RoundRectangle 999">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsTextResponseModeSelected}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource NoahAccent}" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsTextResponseModeSelected}" Value="False">
+                                    <Setter Property="BackgroundColor" Value="Transparent" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectTextResponseModeCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Text"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   FontSize="14"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahAccent}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsTextResponseModeSelected}" Value="True">
+                                        <Setter Property="TextColor" Value="White" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </Border>
+
+                        <Border Grid.Column="1" StrokeThickness="0" StrokeShape="RoundRectangle 999">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsSpeechResponseModeSelected}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource NoahAccent}" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsSpeechResponseModeSelected}" Value="False">
+                                    <Setter Property="BackgroundColor" Value="Transparent" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectSpeechResponseModeCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Voice"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   FontSize="14"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahAccent}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsSpeechResponseModeSelected}" Value="True">
+                                        <Setter Property="TextColor" Value="White" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </Border>
+
+                        <Border Grid.Column="2" StrokeThickness="0" StrokeShape="RoundRectangle 999">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsTextAndSpeechResponseModeSelected}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="{StaticResource NoahAccent}" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsTextAndSpeechResponseModeSelected}" Value="False">
+                                    <Setter Property="BackgroundColor" Value="Transparent" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectTextAndSpeechResponseModeCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Both"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   FontSize="14"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahAccent}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsTextAndSpeechResponseModeSelected}" Value="True">
+                                        <Setter Property="TextColor" Value="White" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </Border>
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Grid.Row="3" Spacing="6" Margin="10,0,10,0">
+                <Label Text="Speech culture"
+                       FontSize="14"
+                       FontFamily="OpenSansSemibold"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NoahAccent}" />
+
+                <Border BackgroundColor="Black"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 999"
+                        HeightRequest="38"
+                        Padding="16,0,14,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Picker ItemsSource="{Binding SpeechCultureOptions}"
+                                SelectedItem="{Binding SpeechCulture, Mode=TwoWay}"
+                                BackgroundColor="Transparent"
+                                TextColor="{StaticResource NoahAccent}"
+                                FontSize="13"
+                                FontFamily="OpenSansSemibold"
+                                HorizontalOptions="Fill"
+                                VerticalOptions="Center" />
+                        <Image Grid.Column="1"
+                               Source="menu_down_outline.png"
+                               WidthRequest="20"
+                               HeightRequest="20"
+                               Aspect="AspectFit"
+                               VerticalOptions="Center"
+                               InputTransparent="True" />
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+        </Grid>
+    </Border>
+</ContentView>

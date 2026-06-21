@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="Client.Views.HomeAdaptiveView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:behaviors="clr-namespace:Client.Behaviors"
+    xmlns:components="clr-namespace:Client.Views.Components"
+    xmlns:models="clr-namespace:Client.Models"
+    xmlns:views="clr-namespace:Client.Views"
+    xmlns:viewmodels="clr-namespace:Client.ViewModels"
+    x:DataType="viewmodels:HomeViewModel"
+    BackgroundColor="{StaticResource NoahBackground}">
+
+    <Grid x:Name="RootGrid">
+        <Grid.Behaviors>
+            <behaviors:AdaptiveStateBehavior Breakpoint="720" MobileState="MobileState" DesktopState="DesktopState" />
+        </Grid.Behaviors>
+
+        <Grid x:Name="DesktopLayout" IsVisible="False">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{Binding DesktopHomeSidebarWidth}" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="300" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" BackgroundColor="{StaticResource NoahSurface}" RowDefinitions="Auto,Auto,*,Auto" Padding="12,14">
+                    <views:DesktopNavigationView IsHomeSelected="{Binding IsHomePageVisible}"
+                                                 ShowSettings="False"
+                                                 NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                                 NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                                 NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                                 NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                                 NavigateChatCommand="{Binding NavigateChatCommand}"
+                                                 ToggleSettingsCommand="{Binding ToggleSettingsCommand}"
+                                                 HeightRequest="38" />
+
+                    <components:SearchEntryView Grid.Row="1"
+                                                Text="{Binding SearchQuery}"
+                                                Placeholder="Search in/for notes."
+                                                IconSource="magnify_purple.png"
+                                                IconOpacity="0.7"
+                                                EntryTextColor="{StaticResource NoahTextPrimary}"
+                                                PlaceholderColor="{StaticResource NoahTextMuted}"
+                                                FontSize="12"
+                                                EntryHeight="38"
+                                                Margin="0,14,0,14" />
+
+                    <VerticalStackLayout Grid.Row="2" Spacing="12">
+                        <Border IsVisible="{Binding HasHomeStatusText}"
+                                BackgroundColor="#17122B"
+                                Stroke="{StaticResource NoahAccent}"
+                                StrokeThickness="0.6"
+                                StrokeShape="RoundRectangle 10"
+                                Padding="10,7">
+                            <Label Text="{Binding HomeStatusText}"
+                                   FontSize="11"
+                                   TextColor="{StaticResource NoahTextPrimary}" />
+                        </Border>
+                        <Label Text="Recent notes:" Style="{StaticResource NoahSectionLabel}" Margin="2,0,0,0" />
+                        <CollectionView ItemsSource="{Binding RecentNotes}" SelectionMode="None" VerticalScrollBarVisibility="Never">
+                            <CollectionView.EmptyView>
+                                <Label Text="No recent notes yet."
+                                       FontSize="12"
+                                       TextColor="{StaticResource NoahTextSecondary}"
+                                       Margin="4,4,0,0" />
+                            </CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:Note">
+                                    <Border Margin="0,0,0,10" Padding="14,11" BackgroundColor="#06050A" StrokeShape="RoundRectangle 8" StrokeThickness="0">
+                                        <Border.Behaviors>
+                                            <behaviors:TapScaleBehavior />
+                                        </Border.Behaviors>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding BindingContext.OpenNoteCommand, Source={x:Reference RootGrid}}" CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Label Text="{Binding Title}" FontSize="11" TextColor="{StaticResource NoahTextPrimary}" LineBreakMode="TailTruncation" />
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+
+                    <views:DesktopNavigationView Grid.Row="3"
+                                                 ShowTopNavigation="False"
+                                                 ShowSettings="False"
+                                                 IsHomeSelected="{Binding IsHomePageVisible}"
+                                                 NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                                 NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                                 NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                                 NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                                 NavigateChatCommand="{Binding NavigateChatCommand}"
+                                                 ToggleSettingsCommand="{Binding ToggleSettingsCommand}"
+                                                 HeightRequest="34" />
+                </Grid>
+
+                <BoxView Grid.Column="1" Color="#171126" WidthRequest="6" />
+
+                <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" Padding="20,16">
+                    <Border Style="{StaticResource NoahCardBorder}" Padding="20,18">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Welcome back" FontSize="30" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" />
+                            <Label Text="Here is a quick overview of recent notes, mileage, tasks and quick actions." FontSize="11" TextColor="{StaticResource NoahTextSecondary}" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="10" VerticalOptions="End">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="Tasks for today:" Style="{StaticResource NoahSectionLabel}" />
+                            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never" HeightRequest="88">
+                                <HorizontalStackLayout Spacing="12" BindableLayout.ItemsSource="{Binding TodayTasks}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="models:TaskItem">
+                                            <Border Style="{StaticResource NoahCardBorder}" WidthRequest="110" HeightRequest="68" Padding="10,8">
+                                                <Grid RowDefinitions="*,Auto">
+                                                    <Label Text="{Binding Title}" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" />
+                                                    <Label Grid.Row="1" Text="{Binding DueDisplay}" FontSize="8" HorizontalOptions="End" TextColor="{StaticResource NoahAccent}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </HorizontalStackLayout>
+                            </ScrollView>
+                            <Label Text="No tasks planned for today."
+                                   IsVisible="{Binding HasNoTodayTasks}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource NoahTextSecondary}" />
+
+                        </VerticalStackLayout>
+                        <HorizontalStackLayout Grid.Row="1" Spacing="10" HorizontalOptions="End">
+                            <components:IconButtonView WidthRequest="44"
+                                                       HeightRequest="44"
+                                                       CornerRadius="999"
+                                                       NormalFillColor="{StaticResource NoahAccent}"
+                                                       Command="{Binding CreateNoteCommand}"
+                                                       IconSource="note_edit_outline.png"
+                                                       IconWidth="22"
+                                                       IconHeight="22" />
+                            <components:IconButtonView WidthRequest="44"
+                                                       HeightRequest="44"
+                                                       CornerRadius="999"
+                                                       NormalFillColor="{StaticResource NoahAccent}"
+                                                       Command="{Binding CreateReminderCommand}"
+                                                       IconSource="bell_badge_outline.png"
+                                                       IconWidth="22"
+                                                       IconHeight="22" />
+                            <components:IconButtonView WidthRequest="44"
+                                                       HeightRequest="44"
+                                                       CornerRadius="999"
+                                                       NormalFillColor="{StaticResource NoahAccent}"
+                                                       Command="{Binding CreateTaskCommand}"
+                                                       IconSource="checkbox_marked_circle_plus_outline.png"
+                                                       IconWidth="22"
+                                                       IconHeight="22" />
+                        </HorizontalStackLayout>
+                    </Grid>
+                </Grid>
+
+                <Grid Grid.Column="3" RowDefinitions="Auto,Auto,*,Auto" Padding="0,16,20,16">
+                    <Border Style="{StaticResource NoahCardBorder}" Padding="16,12" Margin="0,0,0,10">
+                        <VerticalStackLayout Spacing="3">
+                            <Label Text="Current odometer" Style="{StaticResource NoahMutedLabel}" FontSize="10" />
+                            <Label Text="{Binding OdometerKm, StringFormat='{0:N0} km'}" FontSize="30" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" />
+                            <Label Text="{Binding LastRecorded, StringFormat='Last recorded at: {0:HH:mm}'}" Style="{StaticResource NoahMutedLabel}" FontSize="9" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Border Style="{StaticResource NoahCardBorder}" Padding="14,10">
+                            <VerticalStackLayout Spacing="3">
+                                <Label Text="{Binding LastTripKm, StringFormat='{0:N1} km'}" FontSize="16" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" />
+                                <Label Text="Last trip" Style="{StaticResource NoahMutedLabel}" FontSize="10" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource NoahCardBorder}" Padding="14,10">
+                            <VerticalStackLayout Spacing="3">
+                                <Label Text="{Binding ThisMonthKm, StringFormat='{0:N1} km'}" FontSize="16" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" />
+                                <Label Text="This month" Style="{StaticResource NoahMutedLabel}" FontSize="10" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="3" BackgroundColor="#171126" Stroke="{StaticResource NoahAccent}" StrokeShape="RoundRectangle 16" StrokeThickness="0.8" Padding="10,8" HorizontalOptions="End" VerticalOptions="End">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding NavigateChatCommand}" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="175">
+                            <Label Text="Ask NOAH" FontSize="13" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" VerticalOptions="Center" />
+                            <Border BackgroundColor="#2A1A4A" Stroke="{StaticResource NoahAccent}" StrokeShape="RoundRectangle 999" StrokeThickness="0.6" Padding="7,2" VerticalOptions="Center">
+                                <Label Text="AI" FontSize="9" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" />
+                            </Border>
+                        </HorizontalStackLayout>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+        <Grid x:Name="MobileLayout" IsVisible="True">
+            <Grid RowDefinitions="*,Auto">
+                <ScrollView Grid.Row="0" VerticalScrollBarVisibility="Never" IsVisible="{Binding IsHomePageVisible}">
+                    <VerticalStackLayout Padding="14,28,14,24" Spacing="14">
+                        <Border IsVisible="{Binding HasHomeStatusText}"
+                                BackgroundColor="#17122B"
+                                Stroke="{StaticResource NoahAccent}"
+                                StrokeThickness="0.6"
+                                StrokeShape="RoundRectangle 10"
+                                Padding="10,7">
+                            <Label Text="{Binding HomeStatusText}"
+                                   FontSize="11"
+                                   TextColor="{StaticResource NoahTextPrimary}" />
+                        </Border>
+                        <Border Style="{StaticResource NoahCardBorder}" Padding="12">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Current odometer" Style="{StaticResource NoahMutedLabel}" FontSize="10" />
+                                <Label Text="{Binding OdometerKm, StringFormat='{0:N0} km'}" TextColor="{StaticResource NoahAccent}" FontSize="30" FontFamily="OpenSansSemibold" FontAttributes="Bold" />
+                                <Label Text="{Binding LastRecorded, StringFormat='Last recorded at: {0:HH:mm}'}" Style="{StaticResource NoahMutedLabel}" FontSize="9" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Border Style="{StaticResource NoahCardBorder}" Padding="12">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="{Binding LastTripKm, StringFormat='{0:N1} km'}" TextColor="{StaticResource NoahAccent}" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" />
+                                    <Label Text="Last trip" Style="{StaticResource NoahMutedLabel}" FontSize="10" />
+                                </VerticalStackLayout>
+                            </Border>
+                            <Border Grid.Column="1" Style="{StaticResource NoahCardBorder}" Padding="12">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="{Binding ThisMonthKm, StringFormat='{0:N1} km'}" TextColor="{StaticResource NoahAccent}" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" />
+                                    <Label Text="This month" Style="{StaticResource NoahMutedLabel}" FontSize="10" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+
+                        <Label Text="Recent notes:" Style="{StaticResource NoahSectionLabel}" />
+                        <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                            <HorizontalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding RecentNotes}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:Note">
+                                        <Border WidthRequest="88" HeightRequest="88" BackgroundColor="{StaticResource NoahCardSelected}" StrokeShape="RoundRectangle 8" Padding="8">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding BindingContext.OpenNoteCommand, Source={x:Reference RootGrid}}" CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Label Text="{Binding Title}" TextColor="{StaticResource NoahTextPrimary}" FontSize="15" FontFamily="OpenSansSemibold" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+                        <Label Text="No recent notes yet."
+                               IsVisible="{Binding HasNoRecentNotes}"
+                               FontSize="12"
+                               TextColor="{StaticResource NoahTextSecondary}" />
+
+                        <Label Text="Tasks for today:" Style="{StaticResource NoahSectionLabel}" />
+                        <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                            <HorizontalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding TodayTasks}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:TaskItem">
+                                        <Border Style="{StaticResource NoahCardBorder}" WidthRequest="88" HeightRequest="68" Padding="8">
+                                            <Grid RowDefinitions="*,Auto">
+                                                <Label Text="{Binding Title}" TextColor="{StaticResource NoahTextPrimary}" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" LineBreakMode="WordWrap" />
+                                                <Label Grid.Row="1" Text="{Binding DueDisplay}" TextColor="{StaticResource NoahAccent}" FontSize="8" HorizontalOptions="End" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+                            <Label Text="No tasks planned for today."
+                                   IsVisible="{Binding HasNoTodayTasks}"
+                                   FontSize="12"
+                                   TextColor="{StaticResource NoahTextSecondary}" />
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <views:MobileNavigationFooterView Grid.Row="1"
+                                                  IsHomeSelected="True"
+                                                  NavigateHomeCommand="{Binding NavigateHomeCommand}"
+                                                  NavigateMileageCommand="{Binding NavigateMileageCommand}"
+                                                  NavigateNotesCommand="{Binding NavigateNotesCommand}"
+                                                  NavigateCalendarCommand="{Binding NavigateCalendarCommand}"
+                                                  NavigateChatCommand="{Binding NavigateChatCommand}"
+                                                  IsVisible="{Binding IsHomePageVisible}" />
+            </Grid>
+        </Grid>
+
+        <views:NotesAdaptiveView IsVisible="{Binding IsNotesPageOpen}" />
+        <views:CalendarAdaptiveView IsVisible="{Binding IsCalendarPageOpen}" />
+        <views:MileageAdaptiveView IsVisible="{Binding IsMileagePageOpen}" />
+
+        <components:HomeActionDialogView IsVisible="{Binding IsHomeDialogVisible}" />
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="LayoutStates">
+                <VisualState x:Name="MobileState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout" Property="IsVisible" Value="True" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="False" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="DesktopState">
+                    <VisualState.Setters>
+                        <Setter TargetName="MobileLayout" Property="IsVisible" Value="False" />
+                        <Setter TargetName="DesktopLayout" Property="IsVisible" Value="True" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+
+</ContentView>
