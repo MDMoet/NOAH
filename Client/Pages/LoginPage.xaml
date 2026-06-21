@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="Client.Pages.LoginPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    BackgroundColor="{StaticResource NoahBackground}"
+    Shell.NavBarIsVisible="False">
+
+    <Grid Padding="24">
+        <Border HorizontalOptions="Center"
+                VerticalOptions="Center"
+                MaximumWidthRequest="420"
+                BackgroundColor="{StaticResource NoahCard}"
+                Stroke="{StaticResource NoahAccent}"
+                StrokeShape="RoundRectangle 18"
+                StrokeThickness="2"
+                Padding="28">
+            <VerticalStackLayout Spacing="18">
+                <Label Text="Sign in to NOAH"
+                       FontFamily="OpenSansSemibold"
+                       FontSize="30"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NoahTextPrimary}" />
+
+                <Label Text="Use the demo login to access the externally available version of your app."
+                       FontSize="14"
+                       TextColor="{StaticResource NoahTextSecondary}" />
+
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Username"
+                           FontFamily="OpenSansSemibold"
+                           FontSize="13"
+                           TextColor="{StaticResource NoahAccent}" />
+                    <Border BackgroundColor="{StaticResource NoahSurface}"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 18"
+                            Padding="16,0">
+                        <Entry Text="{Binding Username, Mode=TwoWay}"
+                               Placeholder="Enter your username"
+                               PlaceholderColor="{StaticResource NoahTextMuted}"
+                               TextColor="{StaticResource NoahTextPrimary}"
+                               HeightRequest="48"
+                               ClearButtonVisibility="WhileEditing" />
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Password"
+                           FontFamily="OpenSansSemibold"
+                           FontSize="13"
+                           TextColor="{StaticResource NoahAccent}" />
+                    <Border BackgroundColor="{StaticResource NoahSurface}"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 18"
+                            Padding="16,0">
+                        <Entry Text="{Binding Password, Mode=TwoWay}"
+                               Placeholder="Enter your password"
+                               PlaceholderColor="{StaticResource NoahTextMuted}"
+                               TextColor="{StaticResource NoahTextPrimary}"
+                               HeightRequest="48"
+                               IsPassword="True"
+                               ClearButtonVisibility="Never" />
+                    </Border>
+                </VerticalStackLayout>
+
+                <Label Text="{Binding StatusText}"
+                       FontSize="13"
+                       TextColor="#FF8A8A"
+                       IsVisible="{Binding HasStatusText}" />
+
+                <Grid ColumnDefinitions="Auto,*"
+                      ColumnSpacing="10"
+                      IsVisible="{Binding IsBusy}">
+                    <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                       Color="{StaticResource NoahAccent}"
+                                       VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="Signing you in..."
+                           FontSize="13"
+                           TextColor="{StaticResource NoahTextSecondary}"
+                           VerticalTextAlignment="Center" />
+                </Grid>
+
+                <Border BackgroundColor="{StaticResource NoahAccent}"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 20"
+                        HeightRequest="50"
+                        Opacity="1">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsBusy}" Value="True">
+                            <Setter Property="Opacity" Value="0.7" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding SignInCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Sign in"
+                           FontFamily="OpenSansSemibold"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"
+                           TextColor="White" />
+                </Border>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

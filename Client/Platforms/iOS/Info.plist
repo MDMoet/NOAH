@@ -28,5 +28,13 @@
 	</array>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+	<key>NSCameraUsageDescription</key>
+	<string>NOAH uses the camera to capture odometer photos and chat attachments.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NOAH uses the microphone so you can speak to the assistant.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>NOAH uses your location for nearby places, saved places, and mileage entries when you ask for it.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>NOAH stores captured images temporarily for attachments and odometer scans.</string>
 </dict>
 </plist>

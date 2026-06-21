@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Client.Pages;
+using Client.Services;
 
 namespace Client;
 
@@ -11,6 +12,7 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        return new Window(new AppShell());
+        BootstrapPage bootstrapPage = ServiceHelper.GetRequiredService<BootstrapPage>();
+        return new Window(bootstrapPage);
     }
 }
