@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NOAH.Domain.Common;
@@ -79,17 +79,17 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
             .HasDatabaseName("IX_AssistantInteractions_RequestedAtUtc");
 
         entity.HasIndex(assistantInteraction => new
-            {
-                assistantInteraction.ChatId,
-                assistantInteraction.RequestedAtUtc
-            })
+        {
+            assistantInteraction.ChatId,
+            assistantInteraction.RequestedAtUtc
+        })
             .HasDatabaseName("IX_AssistantInteractions_ChatId_RequestedAtUtc");
 
         entity.HasIndex(assistantInteraction => new
-            {
-                assistantInteraction.RelatedEntityType,
-                assistantInteraction.RelatedEntityId
-            })
+        {
+            assistantInteraction.RelatedEntityType,
+            assistantInteraction.RelatedEntityId
+        })
             .HasDatabaseName("IX_AssistantInteractions_RelatedEntity");
     }
 
@@ -142,10 +142,10 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
             .OnDelete(DeleteBehavior.SetNull);
 
         entity.HasIndex(assistantMemoryItem => new
-            {
-                assistantMemoryItem.IsPinned,
-                assistantMemoryItem.UpdatedAtUtc
-            })
+        {
+            assistantMemoryItem.IsPinned,
+            assistantMemoryItem.UpdatedAtUtc
+        })
             .HasDatabaseName("IX_AssistantMemoryItems_IsPinned_UpdatedAtUtc");
     }
 
@@ -184,10 +184,10 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
             .HasColumnType("date");
 
         entity.HasIndex(taskItem => new
-            {
-                taskItem.Status,
-                taskItem.DueAtUtc
-            })
+        {
+            taskItem.Status,
+            taskItem.DueAtUtc
+        })
             .HasDatabaseName("IX_TaskItems_Status_DueAtUtc");
 
         entity.HasIndex(taskItem => taskItem.PlannedFor)
@@ -314,10 +314,10 @@ public sealed class NoahDbContext(DbContextOptions<NoahDbContext> options) : DbC
             .IsRequired(false);
 
         entity.HasIndex(reminder => new
-            {
-                reminder.Status,
-                reminder.TriggerAtUtc
-            })
+        {
+            reminder.Status,
+            reminder.TriggerAtUtc
+        })
             .HasDatabaseName("IX_Reminders_Status_TriggerAtUtc");
     }
 
