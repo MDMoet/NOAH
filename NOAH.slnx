@@ -5,4 +5,6 @@
   <Project Path="Contracts/Contracts.csproj" />
   <Project Path="Domain/Domain.csproj" />
   <Project Path="Infrastructure/Infrastructure.csproj" />
+  <Project Path="Tests/Client.UiTests/Client.UiTests.csproj" />
+  <Project Path="Tests/Client.UnitTests/Client.UnitTests.csproj" />
 </Solution>

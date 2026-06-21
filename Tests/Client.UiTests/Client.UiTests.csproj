@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.20" />
+    <PackageReference Include="Markdig" Version="0.37.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Contracts\Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Client\Models\AssistantModels.cs" Link="Client\Models\AssistantModels.cs" />
+    <Compile Include="..\..\Client\Models\ChatMarkdownFormatter.cs" Link="Client\Models\ChatMarkdownFormatter.cs" />
+    <Compile Include="..\..\Client\Models\ChatMessage.cs" Link="Client\Models\ChatMessage.cs" />
+    <Compile Include="..\..\Client\Models\MileageEntry.cs" Link="Client\Models\MileageEntry.cs" />
+    <Compile Include="..\..\Client\Models\Note.cs" Link="Client\Models\Note.cs" />
+    <Compile Include="..\..\Client\Models\TaskItem.cs" Link="Client\Models\TaskItem.cs" />
+    <Compile Include="..\..\Client\Controls\SelectableLabel.cs" Link="Client\Controls\SelectableLabel.cs" />
+    <Compile Include="..\..\Client\Services\Repositories.cs" Link="Client\Services\Repositories.cs" />
+    <Compile Include="..\..\Client\Services\UserDialogService.cs" Link="Client\Services\UserDialogService.cs" />
+    <Compile Include="..\..\Client\ViewModels\CalendarViewModel.cs" Link="Client\ViewModels\CalendarViewModel.cs" />
+  </ItemGroup>
+
+</Project>
