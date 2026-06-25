@@ -117,18 +117,40 @@ public sealed class DemoUserAuthenticationService(
             byte[] expectedHash = Convert.FromBase64String(demoUser.PasswordHash);
             int iterations = Math.Clamp(demoUser.PasswordIterations, 10000, 600000);
 
-            byte[] actualHash = Rfc2898DeriveBytes.Pbkdf2(
-                providedSecret.Trim(),
-                salt,
-                iterations,
-                HashAlgorithmName.SHA256,
-                expectedHash.Length);
+            foreach (string passwordCandidate in GetPasswordCandidates(providedSecret.Trim()))
+            {
+                byte[] actualHash = Rfc2898DeriveBytes.Pbkdf2(
+                    passwordCandidate,
+                    salt,
+                    iterations,
+                    HashAlgorithmName.SHA256,
+                    expectedHash.Length);
 
-            return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
+                if (CryptographicOperations.FixedTimeEquals(actualHash, expectedHash))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         catch (FormatException)
         {
             return false;
+        }
+    }
+
+    private static IEnumerable<string> GetPasswordCandidates(string providedSecret)
+    {
+        yield return providedSecret;
+
+        string normalizedSmartQuotes = providedSecret
+            .Replace('\u201D', '\u201C')
+            .Replace('"', '\u201C');
+
+        if (!string.Equals(normalizedSmartQuotes, providedSecret, StringComparison.Ordinal))
+        {
+            yield return normalizedSmartQuotes;
         }
     }
 }
