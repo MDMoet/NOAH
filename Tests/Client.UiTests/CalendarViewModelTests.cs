@@ -13,7 +13,7 @@ public sealed class CalendarViewModelTests
     public async Task SelectingOtherDay_UpdatesAgendaHeadingAndEvents()
     {
         DateTime today = DateTime.Today;
-        DateTime selectedDate = today.AddDays(3);
+        DateTime selectedDate = new(today.Year, today.Month, today.Day == 1 ? 2 : 1);
 
         FakeTaskRepository taskRepository = new(
         [

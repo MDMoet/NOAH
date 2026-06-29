@@ -50,12 +50,15 @@ public sealed class AssistantService(
         @"\b(?:(?:i'?ve|i\s+have|we'?ve|we\s+have)\s+)?(?:created|scheduled|saved|added|set up|logged|updated)\b|\bcreated\s+(?:note|task|reminder|memory|location|mileage)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private const string PseudoToolNameRegexPattern =
+        @"create[\s_]*(?:note|task|reminder|memory|mileage[\s_]*entry)|find[\s_]*nearby[\s_]*places|save[\s_]*(?:(?:my|this|current)[\s_]*)?location|calculate[\s_]*distance|geocode|reverse[\s_]*geocode|log[\s_]*mileage|search";
+
     private static readonly Regex PseudoToolCallRegex = new(
-        @"\b(?:create\s+(?:note|task|reminder|memory)|find\s+nearby\s+places|save\s+(?:my\s+|this\s+|current\s+)?location|calculate\s+distance|geocode|reverse\s+geocode|log\s+mileage|search)\s*\([^)]*\)",
+        $@"\b(?:{PseudoToolNameRegexPattern})\s*\([^)\r\n]*\)?",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
 
     private static readonly Regex RecoverablePseudoToolCallRegex = new(
-        @"(?<tool>create\s+(?:note|task|reminder|memory|mileage\s+entry)|find\s+nearby\s+places|save\s+location|calculate\s+distance|log\s+mileage|search)\s*\((?<args>[^)]*)\)",
+        $@"(?<tool>{PseudoToolNameRegexPattern})\s*\((?<args>[^)\r\n]*)\)?",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
 
     private static readonly Regex StructuredActionIntentRegex = new(
@@ -724,7 +727,7 @@ public sealed class AssistantService(
         promptBuilder.AppendLine("For SaveLocation, use title for the saved location name and rely on currentLocation or coordinates already present in the request.");
         promptBuilder.AppendLine("For CalculateDistance, keep the user's coordinates or destination wording in query or description so NOAH can execute it.");
         promptBuilder.AppendLine("For CreateMileageEntry, only use that action when the user is clearly trying to log an odometer reading or mileage value.");
-        promptBuilder.AppendLine("Never put pseudo tool syntax like find nearby places(...) or create note(...) in responseText.");
+        promptBuilder.AppendLine("Never put pseudo tool syntax like find_nearby_places(...) or create_note(...) in responseText.");
         promptBuilder.AppendLine("If the user wants to plan or schedule an event with a real date/time, use CreateTask and set createLinkedReminder to true.");
         promptBuilder.AppendLine("For scheduled events, set reminderAt to the same start time unless the user explicitly asks for a different reminder time.");
         promptBuilder.AppendLine("Use scheduledAt for the event start time and endsAt for the event end time when known.");
@@ -1079,64 +1082,85 @@ public sealed class AssistantService(
             return null;
         }
 
-        Match match = RecoverablePseudoToolCallRegex.Match(responseText.Trim());
-
-        if (!match.Success)
+        foreach (Match match in RecoverablePseudoToolCallRegex.Matches(responseText.Trim()))
         {
-            return null;
+            string toolName = NormalizePseudoToolName(match.Groups["tool"].Value);
+            IReadOnlyDictionary<string, string> arguments = ParsePseudoToolArguments(match.Groups["args"].Value);
+            GeoCoordinateDto? locationOverride = TryParsePseudoToolLocation(arguments);
+            AssistantPlannedToolAction? action = toolName switch
+            {
+                "create note" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.CreateNote,
+                    title: GetPseudoToolArgument(arguments, "title", "name"),
+                    description: GetPseudoToolArgument(arguments, "description", "content", "body", "text")),
+                "create task" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.CreateTask,
+                    title: GetPseudoToolArgument(arguments, "title", "name"),
+                    description: GetPseudoToolArgument(arguments, "description", "content", "body", "text"),
+                    scheduledAt: GetPseudoToolArgument(arguments, "scheduledAt", "dueAt", "when"),
+                    priority: TryParseTaskPriority(GetPseudoToolArgument(arguments, "priority")),
+                    createLinkedReminder: TryParsePseudoToolBoolean(GetPseudoToolArgument(arguments, "createLinkedReminder", "createReminder"))),
+                "create reminder" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.CreateReminder,
+                    title: GetPseudoToolArgument(arguments, "title", "name"),
+                    description: GetPseudoToolArgument(arguments, "description", "message", "content", "body", "text"),
+                    scheduledAt: GetPseudoToolArgument(arguments, "scheduledAt", "when"),
+                    reminderAt: GetPseudoToolArgument(arguments, "reminderAt", "triggerAt", "when"),
+                    reminderTitle: GetPseudoToolArgument(arguments, "reminderTitle", "title", "name"),
+                    reminderMessage: GetPseudoToolArgument(arguments, "reminderMessage", "message", "description", "content")),
+                "create memory" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.CreateMemory,
+                    title: GetPseudoToolArgument(arguments, "title", "name"),
+                    description: GetPseudoToolArgument(arguments, "description", "content", "body", "text"),
+                    tags: GetPseudoToolArgument(arguments, "tags"),
+                    isPinned: TryParsePseudoToolBoolean(GetPseudoToolArgument(arguments, "isPinned", "pinned"))),
+                "create mileage entry" or "log mileage" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.CreateMileageEntry,
+                    description: BuildPseudoMileageDescription(arguments)),
+                "find nearby places" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.FindNearbyPlaces,
+                    query: GetPseudoToolArgument(arguments, "query", "type", "search", "place", "category")),
+                "save location" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.SaveLocation,
+                    title: GetPseudoToolArgument(arguments, "title", "name", "label")),
+                "calculate distance" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.CalculateDistance,
+                    query: BuildPseudoDistanceQuery(arguments)),
+                "search" => CreatePlannedToolAction(
+                    AssistantActionTypeDto.Search,
+                    query: GetPseudoToolArgument(arguments, "query", "text", "search")),
+                _ => null
+            };
+
+            if (action != null)
+            {
+                return new ParsedPseudoToolAction(action, locationOverride);
+            }
         }
 
-        string toolName = NormalizeIntentInput(match.Groups["tool"].Value);
-        IReadOnlyDictionary<string, string> arguments = ParsePseudoToolArguments(match.Groups["args"].Value);
-        GeoCoordinateDto? locationOverride = TryParsePseudoToolLocation(arguments);
-        AssistantPlannedToolAction? action = toolName switch
-        {
-            "create note" => CreatePlannedToolAction(
-                AssistantActionTypeDto.CreateNote,
-                title: GetPseudoToolArgument(arguments, "title", "name"),
-                description: GetPseudoToolArgument(arguments, "description", "content", "body", "text")),
-            "create task" => CreatePlannedToolAction(
-                AssistantActionTypeDto.CreateTask,
-                title: GetPseudoToolArgument(arguments, "title", "name"),
-                description: GetPseudoToolArgument(arguments, "description", "content", "body", "text"),
-                scheduledAt: GetPseudoToolArgument(arguments, "scheduledAt", "dueAt", "when"),
-                priority: TryParseTaskPriority(GetPseudoToolArgument(arguments, "priority")),
-                createLinkedReminder: TryParsePseudoToolBoolean(GetPseudoToolArgument(arguments, "createLinkedReminder", "createReminder"))),
-            "create reminder" => CreatePlannedToolAction(
-                AssistantActionTypeDto.CreateReminder,
-                title: GetPseudoToolArgument(arguments, "title", "name"),
-                description: GetPseudoToolArgument(arguments, "description", "message", "content", "body", "text"),
-                scheduledAt: GetPseudoToolArgument(arguments, "scheduledAt", "when"),
-                reminderAt: GetPseudoToolArgument(arguments, "reminderAt", "triggerAt", "when"),
-                reminderTitle: GetPseudoToolArgument(arguments, "reminderTitle", "title", "name"),
-                reminderMessage: GetPseudoToolArgument(arguments, "reminderMessage", "message", "description", "content")),
-            "create memory" => CreatePlannedToolAction(
-                AssistantActionTypeDto.CreateMemory,
-                title: GetPseudoToolArgument(arguments, "title", "name"),
-                description: GetPseudoToolArgument(arguments, "description", "content", "body", "text"),
-                tags: GetPseudoToolArgument(arguments, "tags"),
-                isPinned: TryParsePseudoToolBoolean(GetPseudoToolArgument(arguments, "isPinned", "pinned"))),
-            "create mileage entry" or "log mileage" => CreatePlannedToolAction(
-                AssistantActionTypeDto.CreateMileageEntry,
-                description: BuildPseudoMileageDescription(arguments)),
-            "find nearby places" => CreatePlannedToolAction(
-                AssistantActionTypeDto.FindNearbyPlaces,
-                query: GetPseudoToolArgument(arguments, "query", "type", "search", "place", "category")),
-            "save location" => CreatePlannedToolAction(
-                AssistantActionTypeDto.SaveLocation,
-                title: GetPseudoToolArgument(arguments, "title", "name", "label")),
-            "calculate distance" => CreatePlannedToolAction(
-                AssistantActionTypeDto.CalculateDistance,
-                query: BuildPseudoDistanceQuery(arguments)),
-            "search" => CreatePlannedToolAction(
-                AssistantActionTypeDto.Search,
-                query: GetPseudoToolArgument(arguments, "query", "text", "search")),
-            _ => null
-        };
+        return null;
+    }
 
-        return action == null
-            ? null
-            : new ParsedPseudoToolAction(action, locationOverride);
+    private static string NormalizePseudoToolName(string value)
+    {
+        string compactName = Regex.Replace(value, @"[\s_]+", string.Empty).ToLowerInvariant();
+
+        return compactName switch
+        {
+            "createnote" => "create note",
+            "createtask" => "create task",
+            "createreminder" => "create reminder",
+            "creatememory" => "create memory",
+            "createmileageentry" => "create mileage entry",
+            "findnearbyplaces" => "find nearby places",
+            "savelocation" or "savemylocation" or "savethislocation" or "savecurrentlocation" => "save location",
+            "calculatedistance" => "calculate distance",
+            "geocode" => "geocode",
+            "reversegeocode" => "reverse geocode",
+            "logmileage" => "log mileage",
+            "search" => "search",
+            _ => NormalizeIntentInput(value).ToLowerInvariant()
+        };
     }
 
     private static IReadOnlyDictionary<string, string> ParsePseudoToolArguments(string value)

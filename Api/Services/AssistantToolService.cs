@@ -64,10 +64,12 @@ public sealed class AssistantToolService(
     private static readonly Regex MemoryRecallIntentRegex = new(
         @"^(?:what\s+(?:preference|preferences)\b.*\bdo\s+i\s+have\b|which\b.*\bdo\s+i\s+prefer\b|what\s+do\s+i\s+prefer\b|what\s+do\s+you\s+remember(?:\s+about)?\b|what\s+have\s+you\s+(?:saved|stored|remembered)(?:\s+about)?\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex PlannedToolSyntaxResponseRegex = new(
-        @"\b(?:create\s+(?:note|task|reminder|memory)|find\s+nearby\s+places|save\s+location|calculate\s+distance|geocode|reverse\s+geocode|log\s+mileage)\s*\([^)]*\)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
+    private const string PseudoToolNameRegexPattern =
+        @"create[\s_]*(?:note|task|reminder|memory|mileage[\s_]*entry)|find[\s_]*nearby[\s_]*places|save[\s_]*(?:(?:my|this|current)[\s_]*)?location|calculate[\s_]*distance|geocode|reverse[\s_]*geocode|log[\s_]*mileage";
 
+    private static readonly Regex PlannedToolSyntaxResponseRegex = new(
+        $@"\b(?:{PseudoToolNameRegexPattern})\s*\((?:[^)\r\n]*)\)?",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
 
     private static readonly string[] NotePrefixes =
     [
