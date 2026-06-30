@@ -71,7 +71,6 @@ public static class MauiProgram
         builder.Services.AddTransient<BootstrapPage>();
         builder.Services.AddTransient<AppShell>();
         builder.Services.AddTransient<HomeAdaptiveView>();
-        builder.Services.AddTransient<ChatAdaptiveView>();
         builder.Services.AddTransient<NotesAdaptiveView>();
         builder.Services.AddTransient<SettingsModalView>();
         builder.Services.AddTransient<CalendarAdaptiveView>();

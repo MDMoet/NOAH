@@ -499,7 +499,7 @@ public class HomeViewModel : INotifyPropertyChanged
     public string ChatInput
     {
         get => chatInput;
-        set { chatInput = value; OnPropertyChanged(); }
+        set { chatInput = value ?? string.Empty; OnPropertyChanged(); }
     }
 
     private string chatSearchQuery = string.Empty;

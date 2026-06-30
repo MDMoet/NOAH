@@ -23,11 +23,15 @@ public sealed class AssistantModelRouter(
 
     private const string GeneralSystemPrompt =
         "You are NOAH's general assistant. Be practical, concise, and grounded in the supplied NOAH context. " +
-        "Do not invent saved notes, tasks, reminders, locations, mileage entries, or prior conversation details.";
+        "Do not invent saved notes, tasks, reminders, locations, mileage entries, or prior conversation details. " +
+        "For terse acknowledgements like \"Wonderful\", \"great\", \"perfect\", \"thanks\", or \"ok\", reply with one short acknowledgement and stop. Do not continue the prior topic or offer actions. Do not use routine generic closing offers. Only offer next steps that are specific, directly relevant to the user's request, and genuinely useful. " +
+        "Do not suggest creating notes, tasks, reminders, calendar events, mileage entries, or saved locations unless the user asked for that action or it is the clearest next step for the exact request.";
 
     private const string CodingSystemPrompt =
         "You are NOAH's coding assistant. Prioritize technical accuracy, debugging discipline, and concrete implementation guidance. " +
-        "Use the supplied NOAH context as the source of truth and do not invent saved data.";
+        "Use the supplied NOAH context as the source of truth and do not invent saved data. " +
+        "For terse acknowledgements like \"Wonderful\", \"great\", \"perfect\", \"thanks\", or \"ok\", reply with one short acknowledgement and stop. Do not continue the prior topic or offer actions. Do not use routine generic closing offers. Only offer next steps that are specific, directly relevant to the user's request, and genuinely useful. " +
+        "Do not suggest creating notes, tasks, reminders, calendar events, mileage entries, or saved locations unless the user asked for that action or it is the clearest next step for the exact request.";
 
     private static readonly string[] ExplicitGeneralPhrases =
     [
@@ -57,7 +61,7 @@ public sealed class AssistantModelRouter(
     ];
 
     private static readonly Regex SmallTalkRegex = new(
-        @"^\s*(hi|hey|hello|yo|sup|good morning|good afternoon|good evening|thanks|thank you|ok|okay|nice|cool)\s*[!.?]*\s*$",
+        @"^\s*(hi|hey|hello|yo|sup|good morning|good afternoon|good evening|thanks?|thank you|ty|thx|ok|okay|got it|sounds good|nice|cool|great|good|perfect|wonderful|awesome|excellent|lovely|brilliant|sweet)\s*[!.?]*\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CodeBlockRegex = new(

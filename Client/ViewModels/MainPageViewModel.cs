@@ -236,7 +236,9 @@ public sealed class MainPageViewModel : ObservableObject
         get => composerText;
         set
         {
-            if (SetProperty(ref composerText, value))
+            bool hadComposerText = HasComposerText;
+
+            if (SetProperty(ref composerText, value ?? string.Empty) && hadComposerText != HasComposerText)
             {
                 OnPropertyChanged(nameof(HasComposerText));
                 OnPropertyChanged(nameof(CurrentPrimaryActionIcon));
@@ -1265,7 +1267,7 @@ public sealed class MainPageViewModel : ObservableObject
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            assistantMessage.MetaText = $"Thinking for {FormatElapsed(stopwatch.Elapsed)}";
+            assistantMessage.MetaText = $"Thinking for {FormatElapsed(stopwatch.Elapsed, true)}";
             await Task.Delay(1000, cancellationToken);
         }
     }
@@ -1336,14 +1338,14 @@ public sealed class MainPageViewModel : ObservableObject
         return chatsForCurrentView.FirstOrDefault();
     }
 
-    private static string FormatElapsed(TimeSpan elapsed)
+    private static string FormatElapsed(TimeSpan elapsed, bool isThinking = false)
     {
         if (elapsed.TotalSeconds < 1)
         {
             return "<1s";
         }
 
-        if (elapsed.TotalSeconds < 10)
+        if (elapsed.TotalSeconds < 10 && !isThinking)
         {
             return $"{elapsed.TotalSeconds:0.#}s";
         }

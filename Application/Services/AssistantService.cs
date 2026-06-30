@@ -65,6 +65,10 @@ public sealed class AssistantService(
         @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|create\b|add\b|save\b|make\b|write\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|where\s+is\b|find\s+coordinates\s+for\b|save\s+(?:my|this|current)\s+location\b|location\s*:|nearby\b|near\s+me\b|around\s+me\b|closest\b|nearest\b|distance(?:\s+(?:to|from))?\b|how\s+far\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex SimpleAcknowledgementRegex = new(
+        @"^\s*(?:thanks?|thank\s+you|ty|thx|ok(?:ay)?|got\s+it|sounds\s+good|nice|cool|great|good|perfect|wonderful|awesome|excellent|lovely|brilliant|sweet)\s*[!.?]*\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Regex ExplicitNoteIntentRegex = new(
         @"^(?:(?:create|add|save|make|write)\s+(?:(?:me|us)\s+)?(?:a\s+)?note\b|note(?:\s+down)?\b|notes?\s*:)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -245,6 +249,26 @@ public sealed class AssistantService(
                     "Assistant request was handled by deterministic tool action {ActionType}. Update persistence took {PersistenceElapsedMs} ms. Total request time: {TotalElapsedMs} ms.",
                     toolActionResult.ActionType,
                     GetElapsedMilliseconds(deterministicUpdateStopwatch),
+                    GetElapsedMilliseconds(requestStopwatch));
+
+                return MapToResponse(assistantInteraction);
+            }
+
+            string? acknowledgementResponse = CreateSimpleAcknowledgementResponse(input);
+
+            if (acknowledgementResponse != null)
+            {
+                assistantInteraction.AssistantResponse = acknowledgementResponse;
+                assistantInteraction.Status = AssistantInteractionStatus.Completed;
+                assistantInteraction.CompletedAtUtc = timeProvider.GetUtcNow();
+                assistantInteraction.UpdatedAtUtc = assistantInteraction.CompletedAtUtc;
+
+                Stopwatch acknowledgementUpdateStopwatch = Stopwatch.StartNew();
+                await assistantInteractionRepository.UpdateAsync(assistantInteraction, cancellationToken);
+
+                logger.LogInformation(
+                    "Assistant request was answered as a simple acknowledgement. Update persistence took {PersistenceElapsedMs} ms. Total request time: {TotalElapsedMs} ms.",
+                    GetElapsedMilliseconds(acknowledgementUpdateStopwatch),
                     GetElapsedMilliseconds(requestStopwatch));
 
                 return MapToResponse(assistantInteraction);
@@ -508,6 +532,18 @@ public sealed class AssistantService(
         return string.IsNullOrWhiteSpace(responseText)
             ? string.Empty
             : responseText.Trim();
+    }
+
+    private static string? CreateSimpleAcknowledgementResponse(string input)
+    {
+        if (!SimpleAcknowledgementRegex.IsMatch(input))
+        {
+            return null;
+        }
+
+        return Regex.IsMatch(input, @"\b(?:thanks?|thank\s+you|ty|thx)\b", RegexOptions.IgnoreCase)
+            ? "You're welcome."
+            : "Glad to hear it.";
     }
 
     /// <summary>

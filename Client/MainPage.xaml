@@ -29,14 +29,14 @@
                     <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
                     <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding CreateChatCommand}" /></Grid.GestureRecognizers>
                     <Image Source="newchat_purple.png" WidthRequest="38" HeightRequest="38" Aspect="AspectFit" VerticalOptions="Center" />
-                    <Label Grid.Column="1" Text="Create new chat" FontSize="20" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Create new chat" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
                 </Grid>
 
                 <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="14" Padding="20,12,18,22">
                     <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
                     <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSearchCommand}" /></Grid.GestureRecognizers>
                     <Image Source="magnify_purple.png" WidthRequest="38" HeightRequest="38" Aspect="AspectFit" VerticalOptions="Center" />
-                    <Label Grid.Column="1" Text="Search in chats" FontSize="20" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Search in chats" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
                 </Grid>
 
                 <BoxView Grid.Row="4" BackgroundColor="#17122B" />
@@ -53,8 +53,8 @@
                         <CollectionView.EmptyView><Label Text="{Binding ChatEmptyStateText}" FontSize="14" TextColor="{StaticResource NoahTextSecondary}" Margin="10,12,0,0" /></CollectionView.EmptyView>
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="models:AssistantChatListItem">
-                                <VerticalStackLayout Spacing="8" Margin="0,0,0,10">
-                                    <Border BackgroundColor="{StaticResource NoahCard}" Stroke="#17122B" StrokeThickness="1" StrokeShape="RoundRectangle 18" Padding="14,0" HeightRequest="66">
+                                <VerticalStackLayout Spacing="20 " Margin="0,0,0,10">
+                                    <Border BackgroundColor="{StaticResource NoahCard}" Stroke="#17122B" StrokeThickness="1" StrokeShape="RoundRectangle 18" Padding="14,0" HeightRequest="44">
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
                                                 <Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" />
@@ -126,7 +126,7 @@
             <BoxView Grid.Column="1" BackgroundColor="#171126" />
 
             <Grid Grid.Column="2" RowDefinitions="*,Auto" BackgroundColor="{StaticResource NoahBackground}">
-                <CollectionView ItemsSource="{Binding Messages}" SelectionMode="None" Margin="44,40,24,0">
+                <CollectionView x:Name="DesktopMessagesCollectionView" ItemsSource="{Binding Messages}" SelectionMode="None" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="44,40,24,0">
                     <CollectionView.EmptyView>
                         <VerticalStackLayout Spacing="6" VerticalOptions="Center" HorizontalOptions="Center">
                             <Label Text="No messages yet" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" HorizontalTextAlignment="Center" />
@@ -136,14 +136,14 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="models:ChatMessageItem">
                             <Grid Padding="0,0,0,28" ColumnDefinitions="*,Auto">
-                                <VerticalStackLayout IsVisible="{Binding IsFromAssistant}" HorizontalOptions="Start" MaximumWidthRequest="1050" Spacing="6">
-                                    <Label Text="{Binding MetaText}" IsVisible="{Binding HasMetaText}" FontSize="15" TextColor="{StaticResource NoahTextSecondary}" />
-                                    <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="20" />
+                                <VerticalStackLayout IsVisible="{Binding IsFromAssistant}" HorizontalOptions="Fill" Spacing="6">
+                                    <Label Text="{Binding MetaText}" IsVisible="{Binding HasMetaText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" />
+                                    <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="15" />
                                     <Label Text="{Binding TimestampText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" />
                                 </VerticalStackLayout>
                                 <VerticalStackLayout Grid.Column="1" IsVisible="{Binding IsFromUser}" HorizontalOptions="End" MaximumWidthRequest="650" Spacing="4">
                                     <Border BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 18,0,18,18" Padding="30,12" HorizontalOptions="End">
-                                        <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="20" />
+                                        <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="15" />
                                     </Border>
                                     <Label Text="{Binding TimestampText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" HorizontalOptions="End" />
                                 </VerticalStackLayout>
@@ -196,11 +196,12 @@
                         </ScrollView>
 
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
-                            <Border HeightRequest="56"
+                            <Border MinimumHeightRequest="56"
+                                    MaximumHeightRequest="126"
                                     BackgroundColor="#17122B"
                                     StrokeThickness="0"
                                     StrokeShape="RoundRectangle 999"
-                                    Padding="22,0">
+                                    Padding="22,6">
                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" VerticalOptions="Center">
                                     <Image Source="paperclip_purple.png"
                                            WidthRequest="24"
@@ -214,15 +215,22 @@
                                             <TapGestureRecognizer Command="{Binding AttachFileCommand}" />
                                         </Image.GestureRecognizers>
                                     </Image>
-                                    <Entry Grid.Column="1"
-                                           Text="{Binding ComposerText}"
-                                           Placeholder="Ask me anything."
-                                           PlaceholderColor="{StaticResource NoahTextSecondary}"
-                                           TextColor="White"
-                                           ReturnCommand="{Binding PrimaryActionCommand}"
-                                           BackgroundColor="Transparent"
-                                           FontSize="17"
-                                           HeightRequest="44" />
+                                    <Editor Grid.Column="1"
+                                            Text="{Binding ComposerText}"
+                                            Placeholder="Ask me anything."
+                                            PlaceholderColor="{StaticResource NoahTextSecondary}"
+                                            TextColor="White"
+                                            BackgroundColor="Transparent"
+                                            FontSize="14"
+                                            AutoSize="TextChanges"
+                                            MinimumHeightRequest="44"
+                                            MaximumHeightRequest="118"
+                                            VerticalOptions="Center"
+                                            VerticalTextAlignment="Center">
+                                        <Editor.Behaviors>
+                                            <behaviors:SubmitOnEnterEditorBehavior Command="{Binding BindingContext.PrimaryActionCommand, Source={x:Reference AssistantPage}}" />
+                                        </Editor.Behaviors>
+                                    </Editor>
                                     <Image Grid.Column="2"
                                            Source="camera_outline_purple.png"
                                            WidthRequest="26"
@@ -245,7 +253,7 @@
                                     WidthRequest="56"
                                     HeightRequest="56">
                                 <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding PrimaryActionCommand}" />
+                                    <TapGestureRecognizer Command="{Binding BindingContext.PrimaryActionCommand, Source={x:Reference AssistantPage}}" />
                                 </Border.GestureRecognizers>
                                 <Image Source="{Binding CurrentPrimaryActionIcon}"
                                        WidthRequest="28"
@@ -270,7 +278,7 @@
             <BoxView Grid.Row="1" HeightRequest="3" BackgroundColor="#17122B" />
 
             <Grid Grid.Row="2" Padding="14,14,14,0">
-                <CollectionView ItemsSource="{Binding Messages}" SelectionMode="None" Margin="0,0,0,8">
+                <CollectionView x:Name="MobileMessagesCollectionView" ItemsSource="{Binding Messages}" SelectionMode="None" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="0,0,0,8">
                     <CollectionView.EmptyView>
                         <VerticalStackLayout Spacing="6" VerticalOptions="Center" HorizontalOptions="Center">
                             <Label Text="No messages yet" FontSize="16" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" HorizontalTextAlignment="Center" />
@@ -280,14 +288,14 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="models:ChatMessageItem">
                             <Grid Padding="0,0,0,14" ColumnDefinitions="*,Auto">
-                                <VerticalStackLayout IsVisible="{Binding IsFromAssistant}" HorizontalOptions="Start" MaximumWidthRequest="310" Spacing="4">
-                                    <Label Text="{Binding MetaText}" IsVisible="{Binding HasMetaText}" FontSize="13" TextColor="{StaticResource NoahTextSecondary}" />
-                                    <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="14" />
+                                <VerticalStackLayout IsVisible="{Binding IsFromAssistant}" HorizontalOptions="Fill" Spacing="4">
+                                    <Label Text="{Binding MetaText}" IsVisible="{Binding HasMetaText}" FontSize="11" TextColor="{StaticResource NoahTextSecondary}" />
+                                    <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="13" />
                                     <Label Text="{Binding TimestampText}" FontSize="10" TextColor="{StaticResource NoahTextSecondary}" />
                                 </VerticalStackLayout>
                                 <VerticalStackLayout Grid.Column="1" IsVisible="{Binding IsFromUser}" HorizontalOptions="End" MaximumWidthRequest="300" Spacing="4">
                                     <Border BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 18,0,18,18" Padding="14,9" HorizontalOptions="End">
-                                        <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="14" />
+                                        <components:MarkdownMessageView Markdown="{Binding Text}" BodyFontSize="13" />
                                     </Border>
                                     <Label Text="{Binding TimestampText}" FontSize="10" TextColor="{StaticResource NoahTextSecondary}" HorizontalOptions="End" />
                                 </VerticalStackLayout>
@@ -344,7 +352,7 @@
                     </ScrollView>
 
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Border HeightRequest="50" BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="16,0">
+                        <Border MinimumHeightRequest="50" MaximumHeightRequest="118" BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 999" Padding="16,5">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" VerticalOptions="Center">
                                 <Image Source="paperclip_purple.png" WidthRequest="22" HeightRequest="22" Aspect="AspectFit" VerticalOptions="Center">
                                     <Image.Behaviors>
@@ -354,7 +362,7 @@
                                         <TapGestureRecognizer Command="{Binding AttachFileCommand}" />
                                     </Image.GestureRecognizers>
                                 </Image>
-                                <Entry Grid.Column="1" Text="{Binding ComposerText}" Placeholder="Ask me anything." PlaceholderColor="{StaticResource NoahTextSecondary}" TextColor="White" ReturnCommand="{Binding PrimaryActionCommand}" BackgroundColor="Transparent" FontSize="14" HeightRequest="42" />
+                                <Editor Grid.Column="1" Text="{Binding ComposerText}" Placeholder="Ask me anything." PlaceholderColor="{StaticResource NoahTextSecondary}" TextColor="White" BackgroundColor="Transparent" FontSize="14" AutoSize="TextChanges" MinimumHeightRequest="42" MaximumHeightRequest="112" VerticalOptions="Center" VerticalTextAlignment="Center"><Editor.Behaviors><behaviors:SubmitOnEnterEditorBehavior Command="{Binding BindingContext.PrimaryActionCommand, Source={x:Reference AssistantPage}}" /></Editor.Behaviors></Editor>
                                 <Image Grid.Column="2" Source="camera_outline_purple.png" WidthRequest="24" HeightRequest="24" Aspect="AspectFit" VerticalOptions="Center">
                                     <Image.Behaviors>
                                         <behaviors:TapScaleBehavior />
@@ -366,7 +374,7 @@
                             </Grid>
                         </Border>
                         <Border Grid.Column="1" BackgroundColor="{StaticResource NoahAccent}" StrokeThickness="0" StrokeShape="RoundRectangle 999" WidthRequest="50" HeightRequest="50">
-                            <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding PrimaryActionCommand}" /></Border.GestureRecognizers>
+                            <Border.GestureRecognizers><TapGestureRecognizer Command="{Binding BindingContext.PrimaryActionCommand, Source={x:Reference AssistantPage}}" /></Border.GestureRecognizers>
                             <Image Source="{Binding CurrentPrimaryActionIcon}" WidthRequest="24" HeightRequest="24" Aspect="AspectFit" HorizontalOptions="Center" VerticalOptions="Center" />
                         </Border>
                     </Grid>
@@ -395,14 +403,14 @@
                             <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
                             <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding CreateChatCommand}" /></Grid.GestureRecognizers>
                             <Image Source="newchat_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" VerticalOptions="Center" />
-                            <Label Grid.Column="1" Text="Create new chat" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Create new chat" FontSize="15" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
                         </Grid>
 
                         <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12" Padding="6,9" Margin="0,0,0,10">
                             <Grid.Behaviors><behaviors:TapScaleBehavior /></Grid.Behaviors>
                             <Grid.GestureRecognizers><TapGestureRecognizer Command="{Binding ToggleSearchCommand}" /></Grid.GestureRecognizers>
                             <Image Source="magnify_purple.png" WidthRequest="32" HeightRequest="32" Aspect="AspectFit" VerticalOptions="Center" />
-                            <Label Grid.Column="1" Text="Search in chats" FontSize="18" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Search in chats" FontSize="15" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahAccent}" VerticalOptions="Center" />
                         </Grid>
 
                         <VerticalStackLayout Grid.Row="3" Spacing="8" Margin="0,0,0,14">
@@ -416,8 +424,8 @@
                             <CollectionView.EmptyView><Label Text="{Binding ChatEmptyStateText}" FontSize="12" TextColor="{StaticResource NoahTextSecondary}" Margin="8,10,8,0" /></CollectionView.EmptyView>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:AssistantChatListItem">
-                                    <VerticalStackLayout Spacing="8" Margin="0,0,0,10">
-                                        <Border BackgroundColor="{StaticResource NoahCard}" Stroke="#17122B" StrokeThickness="1" StrokeShape="RoundRectangle 18" Padding="12,0" HeightRequest="64">
+                                    <VerticalStackLayout Spacing="4" Margin="0,0,0,5">
+                                        <Border BackgroundColor="{StaticResource NoahCard}" Stroke="#17122B" StrokeThickness="1" StrokeShape="RoundRectangle 18" Padding="12,0" HeightRequest="48">
                                             <Border.Triggers>
                                                 <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True"><Setter Property="BackgroundColor" Value="{StaticResource NoahCardSelected}" /><Setter Property="Stroke" Value="{StaticResource NoahCardSelected}" /></DataTrigger>
                                             </Border.Triggers>

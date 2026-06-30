@@ -5,6 +5,8 @@ using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Graphics;
@@ -13,6 +15,10 @@ namespace Client.Models;
 
 internal static class ChatMarkdownFormatter
 {
+    private const string CopyIconSource = "content_copy.png";
+    private const string CopiedIconSource = "check.png";
+    private static readonly TimeSpan CopiedIconDuration = TimeSpan.FromSeconds(2);
+
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .Build();
@@ -39,6 +45,10 @@ internal static class ChatMarkdownFormatter
         """(?<comment>//.*?$|/\*[\s\S]*?\*/)|(?<string>@\"(?:\"\"|[^\"])*\"|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|(?<number>\b\d+(?:\.\d+)?(?:[mMdDfFlLuU]+)?\b)|(?<type>\b(?:string|int|long|short|byte|bool|double|float|decimal|char|object|Guid|DateTime|DateTimeOffset|Task|List|Dictionary|IEnumerable|IReadOnlyList|var)\b)|(?<keyword>\b(?:using|namespace|public|private|protected|internal|static|sealed|partial|class|record|struct|enum|interface|async|await|new|return|if|else|switch|case|for|foreach|while|do|break|continue|try|catch|finally|throw|null|true|false|this|base|get|set|init|where|when|in|out|ref|params)\b)""",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
+    private static readonly Regex JavaRegex = new(
+        """(?<comment>//.*?$|/\*[\s\S]*?\*/)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<number>\b\d+(?:\.\d+)?(?:[fFdDlL])?\b)|(?<type>\b(?:String|int|long|short|byte|boolean|double|float|char|Object|void|List|Map|Set|Optional|var)\b)|(?<keyword>\b(?:package|import|public|private|protected|static|final|class|record|interface|enum|extends|implements|abstract|default|new|return|if|else|switch|case|for|foreach|while|do|break|continue|try|catch|finally|throw|throws|null|true|false|this|super|instanceof|synchronized|volatile|transient|sealed|permits)\b)""",
+        RegexOptions.Multiline | RegexOptions.Compiled);
+
     private static readonly Regex JsonRegex = new(
         """(?<property>"(?:\\.|[^"\\])*"(?=\s*:))|(?<string>"(?:\\.|[^"\\])*")|(?<number>-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|(?<keyword>\b(?:true|false|null)\b)""",
         RegexOptions.Multiline | RegexOptions.Compiled);
@@ -55,6 +65,22 @@ internal static class ChatMarkdownFormatter
         """(?<comment><!--[\s\S]*?-->)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<property>\b[A-Za-z_][A-Za-z0-9_:\-.]*(?=\s*=))|(?<keyword></?[A-Za-z_][A-Za-z0-9_:\-.]*)""",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
+    private static readonly HashSet<string> BlockedBareDomainTlds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bat", "cfg", "conf", "config", "cpp", "cs", "csproj", "css", "cts", "cxx", "dart", "fs", "fsproj", "fsx", "go", "gradle",
+        "hpp", "html", "hxx", "ini", "java", "js", "json", "jsx", "kt", "kts", "lock", "log", "lua", "markdown", "md", "mts",
+        "php", "props", "py", "rb", "rs", "scala", "sh", "sln", "sql", "swift", "targets", "toml", "ts", "tsx", "txt", "vb",
+        "vbproj", "xml", "yaml", "yml"
+    };
+
+    private static readonly Regex PlainUrlRegex = new(
+        @"(?<url>(?:https?://|www\.)[^\s<>()]+|(?<![@\w])(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[^\s<>()]*)?)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex WrappedMarkdownFenceRegex = new(
+        """^\s*```[ \t]*(?:markdown|md)[^\r\n]*\r?\n(?<content>[\s\S]*?)\r?\n```[ \t]*\s*$""",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public static IReadOnlyList<View> CreateViews(string? markdown, double baseFontSize)
     {
         if (string.IsNullOrWhiteSpace(markdown))
@@ -62,7 +88,14 @@ internal static class ChatMarkdownFormatter
             return Array.Empty<View>();
         }
 
-        MarkdownDocument document = Markdown.Parse(markdown.TrimEnd(), Pipeline);
+        string normalizedMarkdown = NormalizeMarkdownForRendering(markdown).TrimEnd();
+        MarkdownDocument document = Markdown.Parse(normalizedMarkdown, Pipeline);
+
+        if (ShouldRenderAsPlainSelectableEditor(normalizedMarkdown, document))
+        {
+            return [CreatePlainSelectableEditor(normalizedMarkdown, baseFontSize)];
+        }
+
         List<View> views = [];
 
         foreach (Block block in document)
@@ -81,6 +114,77 @@ internal static class ChatMarkdownFormatter
         }
 
         return views;
+    }
+
+    internal static string NormalizeMarkdownForRendering(string markdown)
+    {
+        Match wrappedMarkdownMatch = WrappedMarkdownFenceRegex.Match(markdown);
+        return wrappedMarkdownMatch.Success
+            ? wrappedMarkdownMatch.Groups["content"].Value
+            : markdown;
+    }
+
+    internal static bool ShouldRenderAsPlainSelectableEditor(string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+        {
+            return false;
+        }
+
+        string normalizedMarkdown = NormalizeMarkdownForRendering(markdown).TrimEnd();
+        MarkdownDocument document = Markdown.Parse(normalizedMarkdown, Pipeline);
+        return ShouldRenderAsPlainSelectableEditor(normalizedMarkdown, document);
+    }
+
+    private static bool ShouldRenderAsPlainSelectableEditor(string normalizedMarkdown, MarkdownDocument document)
+    {
+        if (normalizedMarkdown.Length < 140 && !normalizedMarkdown.Contains('\n'))
+        {
+            return false;
+        }
+
+        return document.Count > 0 && document.All(static block =>
+            block is ParagraphBlock paragraphBlock && ContainsOnlyPlainInline(paragraphBlock.Inline));
+    }
+
+    private static bool ContainsOnlyPlainInline(ContainerInline? inlineContainer)
+    {
+        if (inlineContainer == null)
+        {
+            return true;
+        }
+
+        for (Inline? inline = inlineContainer.FirstChild; inline != null; inline = inline.NextSibling)
+        {
+            if (inline is LiteralInline or LineBreakInline)
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static View CreatePlainSelectableEditor(string text, double baseFontSize)
+    {
+        return new Editor
+        {
+            Text = text,
+            IsReadOnly = true,
+            AutoSize = EditorAutoSizeOption.TextChanges,
+            BackgroundColor = Colors.Transparent,
+            TextColor = TextColor,
+            FontSize = baseFontSize,
+            FontFamily = "OpenSansRegular",
+            Margin = CreateBlockMargin(),
+            IsSpellCheckEnabled = false,
+            IsTextPredictionEnabled = false,
+            VerticalOptions = LayoutOptions.Start,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalTextAlignment = TextAlignment.Start
+        };
     }
 
     private static View? CreateBlockView(Block block, double baseFontSize, int listDepth)
@@ -229,33 +333,60 @@ internal static class ChatMarkdownFormatter
         string? normalizedLanguage = NormalizeLanguage(language);
         string displayLanguage = FormatLanguageLabel(normalizedLanguage);
 
+        Grid headerGrid = new()
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Star },
+                new ColumnDefinition { Width = GridLength.Auto }
+            },
+            Padding = new Thickness(12, 6, 8, 6)
+        };
+
+        headerGrid.Children.Add(new Label
+        {
+            Text = displayLanguage,
+            IsVisible = !string.IsNullOrWhiteSpace(displayLanguage),
+            FontSize = Math.Max(11, baseFontSize - 4),
+            FontFamily = "OpenSansSemibold",
+            TextColor = AccentSoftColor,
+            VerticalOptions = LayoutOptions.Center
+        });
+
+        ImageButton copyButton = new()
+        {
+            Source = CopyIconSource,
+            BackgroundColor = Colors.Transparent,
+            WidthRequest = 28,
+            HeightRequest = 28,
+            MaximumHeightRequest = 28,
+            MaximumWidthRequest = 28,
+            Padding = new Thickness(5),
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Center
+        };
+        copyButton.Command = new Command(async () => await CopyCodeAsync(normalizedCode, copyButton));
+
+        headerGrid.Children.Add(copyButton);
+        Grid.SetColumn(copyButton, 1);
+
         VerticalStackLayout stack = new()
         {
             Spacing = 0
         };
 
-        if (!string.IsNullOrWhiteSpace(displayLanguage))
+        stack.Children.Add(new Border
         {
-            stack.Children.Add(new Border
-            {
-                BackgroundColor = CodeHeaderColor,
-                StrokeThickness = 0,
-                Padding = new Thickness(12, 8),
-                StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14, 14, 0, 0) },
-                Content = new Label
-                {
-                    Text = displayLanguage,
-                    FontSize = Math.Max(11, baseFontSize - 4),
-                    FontFamily = "OpenSansSemibold",
-                    TextColor = AccentSoftColor
-                }
-            });
-        }
+            BackgroundColor = CodeHeaderColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(14, 14, 0, 0) },
+            Content = headerGrid
+        });
 
         SelectableLabel codeLabel = new()
         {
             FormattedText = BuildCodeFormattedString(normalizedCode, normalizedLanguage, Math.Max(12, baseFontSize - 1)),
-            LineBreakMode = LineBreakMode.NoWrap,
+            LineBreakMode = LineBreakMode.WordWrap,
             Margin = 0,
             Padding = 0
         };
@@ -263,7 +394,7 @@ internal static class ChatMarkdownFormatter
         stack.Children.Add(new ScrollView
         {
             Orientation = ScrollOrientation.Horizontal,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Default,
             VerticalScrollBarVisibility = ScrollBarVisibility.Never,
             Content = codeLabel,
             Padding = new Thickness(14, 12)
@@ -278,6 +409,46 @@ internal static class ChatMarkdownFormatter
             Margin = CreateBlockMargin(),
             Content = stack
         };
+    }
+
+    private static async Task CopyCodeAsync(string code, ImageButton copyButton)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            return;
+        }
+
+        try
+        {
+            await Clipboard.Default.SetTextAsync(code);
+            SetCopyButtonState(copyButton, CopiedIconSource, false);
+            await Task.Delay(CopiedIconDuration);
+        }
+        catch
+        {
+            // Clipboard support depends on the active platform window.
+        }
+        finally
+        {
+            SetCopyButtonState(copyButton, CopyIconSource, true);
+        }
+    }
+
+    private static void SetCopyButtonState(ImageButton copyButton, string iconSource, bool isEnabled)
+    {
+        void ApplyState()
+        {
+            copyButton.Source = iconSource;
+            copyButton.IsEnabled = isEnabled;
+        }
+
+        if (MainThread.IsMainThread)
+        {
+            ApplyState();
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(ApplyState);
     }
 
     private static View CreateTable(Table table, double baseFontSize)
@@ -354,6 +525,13 @@ internal static class ChatMarkdownFormatter
         };
     }
 
+    private static TapGestureRecognizer CreateLinkTapGestureRecognizer(string linkUrl)
+    {
+        TapGestureRecognizer tapGestureRecognizer = new();
+        tapGestureRecognizer.Tapped += async (_, _) => await OpenLinkAsync(linkUrl);
+        return tapGestureRecognizer;
+    }
+
     private static SelectableLabel CreateTextLabel(FormattedString formattedText, double top, double right = 0, double bottom = 0, double left = 0)
     {
         return CreateTextLabel(formattedText, new Thickness(left, top, right, bottom));
@@ -412,7 +590,7 @@ internal static class ChatMarkdownFormatter
         switch (inline)
         {
             case LiteralInline literalInline:
-                builder.Append(WebUtility.HtmlDecode(literalInline.Content.ToString()), textStyle);
+                RenderLiteralText(builder, WebUtility.HtmlDecode(literalInline.Content.ToString()), textStyle);
                 break;
 
             case LineBreakInline:
@@ -433,12 +611,25 @@ internal static class ChatMarkdownFormatter
                 RenderInlineContainer(builder, emphasisInline, emphasisStyle);
                 break;
 
+            case AutolinkInline autolinkInline:
+                string autolinkText = WebUtility.HtmlDecode(autolinkInline.Url);
+                string? autolinkUrl = NormalizeLinkUrl(
+                    autolinkText,
+                    allowBareDomain: true,
+                    rejectFileExtensionHost: true);
+                builder.Append(
+                    autolinkText,
+                    autolinkUrl == null ? textStyle : CreateLinkStyle(textStyle, autolinkUrl));
+                break;
+
             case LinkInline linkInline:
-                MarkdownTextStyle linkStyle = textStyle with
-                {
-                    TextColor = AccentSoftColor,
-                    TextDecorations = TextDecorations.Underline
-                };
+                string? linkUrl = NormalizeLinkUrl(
+                    linkInline.Url,
+                    allowBareDomain: !linkInline.IsAutoLink,
+                    rejectFileExtensionHost: linkInline.IsAutoLink);
+                MarkdownTextStyle linkStyle = linkUrl == null
+                    ? textStyle
+                    : CreateLinkStyle(textStyle, linkUrl);
 
                 if (linkInline.FirstChild == null && !string.IsNullOrWhiteSpace(linkInline.Url))
                 {
@@ -454,6 +645,187 @@ internal static class ChatMarkdownFormatter
             case ContainerInline containerInline:
                 RenderInlineContainer(builder, containerInline, textStyle);
                 break;
+        }
+    }
+
+    private static void RenderLiteralText(
+        FormattedTextBuilder builder,
+        string text,
+        MarkdownTextStyle textStyle)
+    {
+        int currentIndex = 0;
+
+        foreach (Match match in PlainUrlRegex.Matches(text))
+        {
+            if (match.Index > currentIndex)
+            {
+                builder.Append(text[currentIndex..match.Index], textStyle);
+            }
+
+            string matchedUrlText = match.Groups["url"].Value;
+            string linkText = TrimTrailingUrlPunctuation(matchedUrlText, out string trailingText);
+            string? linkUrl = NormalizeLinkUrl(linkText);
+
+            if (linkUrl == null)
+            {
+                builder.Append(matchedUrlText, textStyle);
+            }
+            else
+            {
+                builder.Append(linkText, CreateLinkStyle(textStyle, linkUrl));
+
+                if (trailingText.Length > 0)
+                {
+                    builder.Append(trailingText, textStyle);
+                }
+            }
+
+            currentIndex = match.Index + match.Length;
+        }
+
+        if (currentIndex < text.Length)
+        {
+            builder.Append(text[currentIndex..], textStyle);
+        }
+    }
+
+    private static string TrimTrailingUrlPunctuation(string urlText, out string trailingText)
+    {
+        int endIndex = urlText.Length;
+
+        while (endIndex > 0 && IsTrailingUrlPunctuation(urlText[endIndex - 1]))
+        {
+            endIndex--;
+        }
+
+        trailingText = urlText[endIndex..];
+        return urlText[..endIndex];
+    }
+
+    private static bool IsTrailingUrlPunctuation(char character)
+    {
+        return character is '.' or ',' or ';' or ':' or '!' or '?' or ')' or ']' or '}';
+    }
+
+    private static MarkdownTextStyle CreateLinkStyle(MarkdownTextStyle textStyle, string linkUrl)
+    {
+        return textStyle with
+        {
+            TextColor = AccentSoftColor,
+            TextDecorations = TextDecorations.Underline,
+            LinkUrl = linkUrl
+        };
+    }
+
+    internal static string? NormalizeLinkUrl(
+        string? url,
+        bool allowBareDomain = true,
+        bool rejectFileExtensionHost = false)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return null;
+        }
+
+        string trimmedUrl = WebUtility.HtmlDecode(url).Trim();
+
+        if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out Uri? absoluteUri))
+        {
+            if (rejectFileExtensionHost && IsHttpOrHttps(absoluteUri) && HasBlockedBareDomainTld(absoluteUri.Host))
+            {
+                return null;
+            }
+
+            return trimmedUrl;
+        }
+
+        if (trimmedUrl.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"https://{trimmedUrl}";
+        }
+
+        return allowBareDomain &&
+            IsLikelyBareDomain(trimmedUrl) &&
+            Uri.TryCreate($"https://{trimmedUrl}", UriKind.Absolute, out _)
+            ? $"https://{trimmedUrl}"
+            : null;
+    }
+
+    private static bool IsHttpOrHttps(Uri uri)
+    {
+        return string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyBareDomain(string value)
+    {
+        string host = ExtractBareDomainHost(value);
+
+        if (string.IsNullOrWhiteSpace(host) || host.Contains("..", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string[] labels = host.Split('.');
+
+        if (labels.Length < 2 || HasBlockedBareDomainTld(host))
+        {
+            return false;
+        }
+
+        return labels.All(static label =>
+            label.Length > 0 &&
+            !label.StartsWith("-", StringComparison.Ordinal) &&
+            !label.EndsWith("-", StringComparison.Ordinal) &&
+            label.All(static character => char.IsLetterOrDigit(character) || character == '-'));
+    }
+
+    private static bool HasBlockedBareDomainTld(string host)
+    {
+        string bareHost = ExtractBareDomainHost(host);
+        int lastDotIndex = bareHost.LastIndexOf('.');
+
+        if (lastDotIndex < 0 || lastDotIndex == bareHost.Length - 1)
+        {
+            return false;
+        }
+
+        string tld = bareHost[(lastDotIndex + 1)..];
+        return BlockedBareDomainTlds.Contains(tld);
+    }
+
+    private static string ExtractBareDomainHost(string value)
+    {
+        string host = value.Trim();
+        int pathIndex = host.IndexOfAny(['/', '?', '#']);
+
+        if (pathIndex >= 0)
+        {
+            host = host[..pathIndex];
+        }
+
+        int portIndex = host.LastIndexOf(':');
+
+        if (portIndex > 0 && host[(portIndex + 1)..].All(char.IsDigit))
+        {
+            host = host[..portIndex];
+        }
+
+        return host.TrimEnd('.');
+    }
+
+    private static async Task OpenLinkAsync(string url)
+    {
+        try
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+            {
+                await Launcher.Default.OpenAsync(uri);
+            }
+        }
+        catch
+        {
+            // Launcher availability is platform-dependent.
         }
     }
 
@@ -610,6 +982,7 @@ internal static class ChatMarkdownFormatter
         return language switch
         {
             "csharp" => CSharpRegex,
+            "java" => JavaRegex,
             "json" => JsonRegex,
             "sql" => SqlRegex,
             "javascript" or "typescript" or "powershell" or "bash" or "shell" => ScriptRegex,
@@ -645,6 +1018,7 @@ internal static class ChatMarkdownFormatter
         {
             null => string.Empty,
             "csharp" => "C#",
+            "java" => "Java",
             "javascript" => "JavaScript",
             "typescript" => "TypeScript",
             "powershell" => "PowerShell",
@@ -666,6 +1040,7 @@ internal static class ChatMarkdownFormatter
             TextColor,
             "OpenSansRegular",
             TextDecorations.None,
+            null,
             null);
     }
 
@@ -677,6 +1052,7 @@ internal static class ChatMarkdownFormatter
             color,
             GetCodeFontFamily(),
             TextDecorations.None,
+            null,
             null);
     }
 
@@ -717,6 +1093,13 @@ internal static class ChatMarkdownFormatter
                 span.BackgroundColor = textStyle.BackgroundColor;
             }
 
+            if (!string.IsNullOrWhiteSpace(textStyle.LinkUrl))
+            {
+                string linkUrl = textStyle.LinkUrl!;
+                span.StyleId = linkUrl;
+                span.GestureRecognizers.Add(CreateLinkTapGestureRecognizer(linkUrl));
+            }
+
             formattedString.Spans.Add(span);
         }
 
@@ -732,5 +1115,6 @@ internal static class ChatMarkdownFormatter
         Color TextColor,
         string FontFamily,
         TextDecorations TextDecorations,
-        Color? BackgroundColor);
+        Color? BackgroundColor,
+        string? LinkUrl);
 }

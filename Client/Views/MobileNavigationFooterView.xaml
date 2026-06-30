@@ -6,7 +6,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:components="clr-namespace:Client.Views.Components">
 
-    <Grid RowDefinitions="1,*" HeightRequest="86" BackgroundColor="{StaticResource NoahBackground}">
+    <Grid RowDefinitions="1,*" HeightRequest="86" BackgroundColor="Transparent">
         <BoxView HeightRequest="1" BackgroundColor="#17122B" />
 
         <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" Padding="8,2,10,4" ColumnSpacing="0">

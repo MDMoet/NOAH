@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.Maui.Controls;
@@ -282,7 +283,25 @@ public sealed class ChatMessageItem : ObservableObject
 
     public bool HasMetaText => !string.IsNullOrWhiteSpace(MetaText);
 
-    public string TimestampText => Timestamp.ToLocalTime().ToString("HH:mm");
+    public string TimestampText => FormatTimestamp(Timestamp);
+
+    internal static string FormatTimestamp(DateTimeOffset timestamp)
+    {
+        DateTime localTimestamp = timestamp.ToLocalTime().DateTime;
+        DateTime today = DateTime.Today;
+
+        if (localTimestamp.Date == today)
+        {
+            return localTimestamp.ToString("HH:mm", CultureInfo.CurrentCulture);
+        }
+
+        if (localTimestamp.Date == today.AddDays(-1))
+        {
+            return $"Yesterday {localTimestamp.ToString("HH:mm", CultureInfo.CurrentCulture)}";
+        }
+
+        return localTimestamp.ToString("d MMM yyyy HH:mm", CultureInfo.CurrentCulture);
+    }
 
     public bool IsPending
     {

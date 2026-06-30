@@ -14,5 +14,5 @@ public static class NoahClientBuildConfiguration
     /// When this is filled in, the client skips the login screen and uses the trusted API-key path.
     /// Leave it empty for the demo login flow.
     /// </summary>
-    public const string ApiKey = "";
+    public const string ApiKey = "/sbC@cxaF<V+wt+~1{U<%O,WOQ>9J~+lax#Y2a%Uaddw1?fJ";
 }
