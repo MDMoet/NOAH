@@ -75,7 +75,7 @@ BEGIN
         UpdatedAtUtc DATETIMEOFFSET(7) NULL,
 
         CONSTRAINT CK_AssistantInteractions_InputMode CHECK (InputMode IN (0, 1)),
-        CONSTRAINT CK_AssistantInteractions_ActionType CHECK (ActionType BETWEEN 0 AND 12),
+        CONSTRAINT CK_AssistantInteractions_ActionType CHECK (ActionType BETWEEN 0 AND 13),
         CONSTRAINT CK_AssistantInteractions_ResponseMode CHECK (ResponseMode IN (0, 1, 2)),
         CONSTRAINT CK_AssistantInteractions_Status CHECK (Status IN (0, 1, 2, 3))
     );
@@ -97,7 +97,7 @@ END;
 GO
 
 ALTER TABLE dbo.AssistantInteractions WITH CHECK
-    ADD CONSTRAINT CK_AssistantInteractions_ActionType CHECK (ActionType BETWEEN 0 AND 12);
+    ADD CONSTRAINT CK_AssistantInteractions_ActionType CHECK (ActionType BETWEEN 0 AND 13);
 GO
 
 IF OBJECT_ID(N'dbo.AssistantSettings', N'U') IS NULL
