@@ -143,7 +143,8 @@ public sealed record AssistantPlannedToolAction(
     string? ReminderAt,
     string? ReminderTitle,
     string? ReminderMessage,
-    string? ResponseText);
+    string? ResponseText,
+    IReadOnlyList<AssistantPlannedToolAction>? Actions = null);
 
 /// <summary>
 /// Wraps a structured assistant tool plan together with request context.

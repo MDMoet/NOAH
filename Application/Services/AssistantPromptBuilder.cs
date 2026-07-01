@@ -13,8 +13,8 @@ namespace Application.Services;
 public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
 {
     private const int MaximumUserMessageLength = 2_000;
-    private const int MaximumConversationMemoryCount = 6;
-    private const int MaximumConversationMessageLength = 250;
+    private const int MaximumConversationMemoryCount = 8;
+    private const int MaximumConversationMessageLength = 280;
     private const int MaximumLongTermMemoryCount = 6;
     private const int MaximumMemoryFieldLength = 300;
     private const int MaximumSearchResultCount = 5;
@@ -38,6 +38,13 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
 
     private static readonly Regex MemoryQuestionRegex = new(
         @"^(?:what|which)\b.*\b(?:prefer|preference|remember|saved|stored)\b|^what\s+do\s+you\s+remember\b|^what\s+have\s+you\s+(?:saved|stored|remembered)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CurrentChatReferenceRegex = new(
+        @"\b(?:this|current|our)\s+(?:chat|conversation|thread)\b|\bcompress\s+(?:this|current)\s+chat\b|\bsummari[sz]e\s+(?:this|current|our)\s+(?:chat|conversation|thread)\b|\bchat\s+(?:summary|context|history)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex SavedItemsPrioritizationRegex = new(
+        @"\b(?:saved\s+items?|saved\s+(?:tasks?|reminders?|notes?)|tasks?\s+and\s+reminders?|reminders?\s+and\s+tasks?|what\s+should\s+i\s+do\s+first|do\s+first|top\s+\d+\s+things?|things?\s+i\s+should\s+do\s+next|next\s+(?:actions?|things?|steps?)|overwhelmed)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -111,6 +118,27 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
             promptBuilder.AppendLine("- Answer from the relevant long-term memory above.");
             promptBuilder.AppendLine("- Summarize cleanly in normal assistant language.");
             promptBuilder.AppendLine("- Do not prefix the answer with labels like \"Pinned memory\" or \"Stored memory\" unless the user asks for raw memory details.");
+            promptBuilder.AppendLine();
+        }
+
+
+        if (IsCurrentChatReference(request.Input))
+        {
+            promptBuilder.AppendLine("Current chat guidance:");
+            promptBuilder.AppendLine("- The user is explicitly asking about this chat/current conversation.");
+            promptBuilder.AppendLine("- Use Recent shared conversation memory above as the source for the chat summary or structured facts.");
+            promptBuilder.AppendLine("- If no conversation memory is available, say that no prior messages are available in this chat context.");
+            promptBuilder.AppendLine("- Do not claim you lack access when conversation memory is listed above.");
+            promptBuilder.AppendLine();
+        }
+
+        if (IsSavedItemsPrioritizationQuestion(request.Input) && context.SearchResults.Count > 0)
+        {
+            promptBuilder.AppendLine("Saved-items prioritization guidance:");
+            promptBuilder.AppendLine("- The user wants a recommendation based on saved tasks, reminders, and notes.");
+            promptBuilder.AppendLine("- Use Relevant NOAH search results above as the saved-item source.");
+            promptBuilder.AppendLine("- Recommend what to do first or the top 3 next actions, considering due times, reminder times, priority, status, and note content.");
+            promptBuilder.AppendLine("- Do not say you lack access to saved tasks/reminders/notes when search results are listed above.");
             promptBuilder.AppendLine();
         }
 
@@ -270,6 +298,17 @@ public sealed class AssistantPromptBuilder : IAssistantPromptBuilder
                MemoryQuestionRegex.IsMatch(input.Trim());
     }
 
+    private static bool IsCurrentChatReference(string input)
+    {
+        return !string.IsNullOrWhiteSpace(input) &&
+               CurrentChatReferenceRegex.IsMatch(input.Trim());
+    }
+
+    private static bool IsSavedItemsPrioritizationQuestion(string input)
+    {
+        return !string.IsNullOrWhiteSpace(input) &&
+               SavedItemsPrioritizationRegex.IsMatch(input.Trim());
+    }
     private static string NormalizeWhitespace(string value)
     {
         StringBuilder builder = new(value.Length);

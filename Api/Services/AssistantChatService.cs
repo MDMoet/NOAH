@@ -319,9 +319,13 @@ public sealed class AssistantChatService(
     {
         string normalizedValue = NormalizeWhitespace(value);
 
-        return normalizedValue.Length <= MaximumPreviewLength
-            ? normalizedValue
-            : normalizedValue[..MaximumPreviewLength].TrimEnd() + "...";
+        if (normalizedValue.Length <= MaximumPreviewLength)
+        {
+            return normalizedValue;
+        }
+
+        const string ellipsis = "...";
+        return normalizedValue[..(MaximumPreviewLength - ellipsis.Length)].TrimEnd() + ellipsis;
     }
 
     private static string NormalizeWhitespace(string? value)

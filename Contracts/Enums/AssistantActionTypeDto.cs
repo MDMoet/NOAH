@@ -14,5 +14,6 @@ public enum AssistantActionTypeDto
     CalculateDistance = 9,
     CalculateValue = 10,
     CancelCommand = 11,
-    CreateMemory = 12
+    CreateMemory = 12,
+    MarkTaskCompleted = 13
 }

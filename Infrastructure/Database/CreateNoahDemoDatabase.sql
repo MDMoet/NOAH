@@ -31,7 +31,38 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_DemoUsers_Username' A
     CREATE UNIQUE INDEX IX_DemoUsers_Username ON dbo.DemoUsers(Username);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.DemoUsers WHERE Username = N'noah-school')
+DECLARE @DemoUsername NVARCHAR(100) = N'Avans_Hogeschool';
+DECLARE @DemoDisplayName NVARCHAR(150) = N'Avans Hogeschool';
+DECLARE @DemoPasswordSalt NVARCHAR(200) = N'REPLACE_WITH_DEMO_PASSWORD_SALT';
+DECLARE @DemoPasswordHash NVARCHAR(200) = N'REPLACE_WITH_DEMO_PASSWORD_HASH';
+DECLARE @DemoPasswordIterations INT = 100000;
+
+IF EXISTS (SELECT 1 FROM dbo.DemoUsers WHERE Username = @DemoUsername)
+BEGIN
+    UPDATE dbo.DemoUsers
+    SET
+        DisplayName = @DemoDisplayName,
+        PasswordSalt = @DemoPasswordSalt,
+        PasswordHash = @DemoPasswordHash,
+        PasswordIterations = @DemoPasswordIterations,
+        IsEnabled = 1,
+        UpdatedAtUtc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+    WHERE Username = @DemoUsername;
+END;
+ELSE IF EXISTS (SELECT 1 FROM dbo.DemoUsers WHERE Username = N'noah-school')
+BEGIN
+    UPDATE dbo.DemoUsers
+    SET
+        Username = @DemoUsername,
+        DisplayName = @DemoDisplayName,
+        PasswordSalt = @DemoPasswordSalt,
+        PasswordHash = @DemoPasswordHash,
+        PasswordIterations = @DemoPasswordIterations,
+        IsEnabled = 1,
+        UpdatedAtUtc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+    WHERE Username = N'noah-school';
+END;
+ELSE
 BEGIN
     INSERT INTO dbo.DemoUsers
     (
@@ -44,14 +75,20 @@ BEGIN
     )
     VALUES
     (
-        N'noah-school',
-        N'NOAH School Access',
-        N'MuLpjkDqCKi7OX2PgyQO+A==',
-        N'8u88oqTre26zWq/vn5PYbHs3aLN0G6kuUfXVqzkiyQk=',
-        100000,
+        @DemoUsername,
+        @DemoDisplayName,
+        @DemoPasswordSalt,
+        @DemoPasswordHash,
+        @DemoPasswordIterations,
         1
     );
 END;
+
+UPDATE dbo.DemoUsers
+SET
+    IsEnabled = 0,
+    UpdatedAtUtc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+WHERE Username = N'noah-school';
 GO
 
 IF OBJECT_ID(N'dbo.AssistantInteractions', N'U') IS NULL

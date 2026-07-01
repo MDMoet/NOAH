@@ -11,6 +11,7 @@ namespace Client.Services;
 public sealed class AssistantApiSettingsService
 {
     private const string SelectedChatPreferenceKey = "assistant_selected_chat_id";
+    private const string ShareLocationAutomaticallyPreferenceKey = "assistant_share_location_automatically";
 
     public AssistantClientSettings Load()
     {
@@ -22,7 +23,8 @@ public sealed class AssistantApiSettingsService
         return new AssistantClientSettings(
             NoahClientBuildConfiguration.ApiBaseUrl,
             NoahClientBuildConfiguration.ApiKey,
-            lastSelectedChatId);
+            lastSelectedChatId,
+            Preferences.Default.Get(ShareLocationAutomaticallyPreferenceKey, false));
     }
 
     public AssistantClientSettings EnsureSeededDefaults()
@@ -42,12 +44,20 @@ public sealed class AssistantApiSettingsService
         {
             Preferences.Default.Remove(SelectedChatPreferenceKey);
         }
+
+        Preferences.Default.Set(ShareLocationAutomaticallyPreferenceKey, settings.ShareLocationAutomatically);
     }
 
     public void SaveSelectedChatId(Guid? chatId)
     {
         AssistantClientSettings current = Load();
         Save(current with { LastSelectedChatId = chatId });
+    }
+
+    public void SaveShareLocationAutomatically(bool value)
+    {
+        AssistantClientSettings current = Load();
+        Save(current with { ShareLocationAutomatically = value });
     }
 
     public bool HasTrustedApiKeyConfigured()

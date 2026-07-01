@@ -39,6 +39,7 @@ public sealed class AssistantToolService(
     private const int ActionSearchResultLimit = 10;
     private const int MaximumGeneratedTitleLength = 80;
     private const double DefaultNearbyRadiusKilometers = 2;
+    private const double MaximumCurrentLocationSaveAccuracyMeters = 1000;
     private const string DefaultTimeZoneId = "Europe/Amsterdam";
 
     private static readonly SearchResultTypeDto[] DefaultAssistantSearchTypes =
@@ -63,6 +64,18 @@ public sealed class AssistantToolService(
 
     private static readonly Regex MemoryRecallIntentRegex = new(
         @"^(?:what\s+(?:preference|preferences)\b.*\bdo\s+i\s+have\b|which\b.*\bdo\s+i\s+prefer\b|what\s+do\s+i\s+prefer\b|what\s+do\s+you\s+remember(?:\s+about)?\b|what\s+have\s+you\s+(?:saved|stored|remembered)(?:\s+about)?\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex BroadSavedItemsContextRegex = new(
+        @"\b(?:saved\s+items?|saved\s+(?:tasks?|reminders?|notes?)|tasks?\s+and\s+reminders?|reminders?\s+and\s+tasks?|what\s+should\s+i\s+do\s+first|do\s+first|top\s+\d+\s+things?|things?\s+i\s+should\s+do\s+next|next\s+(?:actions?|things?|steps?)|overwhelmed)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex DaySummaryIntentRegex = new(
+        @"\bsummari[sz]e\b.*\bday\b.*\b(?:reminders?|tasks?|notes?)\b|\bday\b.*\b(?:reminders?|tasks?|notes?)\b.*\bsummari[sz]e\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RemindersDueThisWeekIntentRegex = new(
+        @"\b(?:show|list|find|what(?:'s|\s+is)?)\b.*\breminders?\b.*\bdue\s+this\s+week\b|\breminders?\b.*\bdue\s+this\s+week\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VagueReminderTargetRegex = new(
+        @"^\s*(?:that\s+thing|the\s+thing|this\s+thing|that|this|it)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const string PseudoToolNameRegexPattern =
         @"create[\s_]*(?:note|task|reminder|memory|mileage[\s_]*entry)|find[\s_]*nearby[\s_]*places|save[\s_]*(?:(?:my|this|current)[\s_]*)?location|calculate[\s_]*distance|geocode|reverse[\s_]*geocode|log[\s_]*mileage";
@@ -96,6 +109,22 @@ public sealed class AssistantToolService(
         "task:"
     ];
 
+    private static readonly string[] TaskCompletionPrefixes =
+    [
+        "mark my task about",
+        "mark the task about",
+        "mark task about",
+        "mark my task",
+        "mark the task",
+        "mark task",
+        "complete my task",
+        "complete the task",
+        "complete task",
+        "set my task",
+        "set the task",
+        "set task"
+    ];
+
     private static readonly string[] ReminderPrefixes =
     [
         "create a reminder",
@@ -127,11 +156,19 @@ public sealed class AssistantToolService(
 
     private static readonly string[] NearbyPlacesPrefixes =
     [
+        "what's near me",
+        "whats near me",
+        "what is near me",
+        "what's nearby",
+        "whats nearby",
+        "what is nearby",
         "show me nearby",
         "show nearby",
         "show me places nearby",
         "find nearby",
         "nearby",
+        "near me",
+        "around me",
         "places nearby",
         "find places nearby",
         "find places"
@@ -156,6 +193,14 @@ public sealed class AssistantToolService(
     private static readonly string[] ReverseGeocodePrefixes =
     [
         "reverse geocode",
+        "what is my current address",
+        "what's my current address",
+        "whats my current address",
+        "what is my address",
+        "what's my address",
+        "whats my address",
+        "my current address",
+        "current address",
         "what address is",
         "where am i"
     ];
@@ -186,6 +231,14 @@ public sealed class AssistantToolService(
         "backlog"
     ];
 
+    private static readonly string[] DaySummaryPrefixes =
+    [
+        "summarize my day",
+        "summarise my day",
+        "summary of my day",
+        "day summary"
+    ];
+
     private static readonly string[] CalculatePrefixes =
     [
         "calculate",
@@ -203,11 +256,15 @@ public sealed class AssistantToolService(
         CancellationToken cancellationToken = default)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
-        bool shouldSearchForContext = ShouldSearchForContext(request.Input);
-        IReadOnlyList<AssistantContextSearchResult> searchResults =
-            shouldSearchForContext
-                ? await SearchContextAsync(request.Input, ContextSearchResultLimit, cancellationToken)
-                : Array.Empty<AssistantContextSearchResult>();
+        AssistantSearchCriteria? broadContextSearchCriteria = TryBuildBroadContextSearchCriteria(request.Input);
+        bool shouldSearchForContext = broadContextSearchCriteria != null || ShouldSearchForContext(request.Input);
+        IReadOnlyList<AssistantContextSearchResult> searchResults = shouldSearchForContext
+            ? await SearchContextAsync(
+                broadContextSearchCriteria?.Query ?? request.Input,
+                broadContextSearchCriteria == null ? ContextSearchResultLimit : 12,
+                cancellationToken,
+                broadContextSearchCriteria?.Types)
+            : Array.Empty<AssistantContextSearchResult>();
 
         AssistantPromptContext promptContext = new()
         {
@@ -259,7 +316,7 @@ public sealed class AssistantToolService(
         else if (TryGetCommandText(input, DistancePrefixes, out string distanceText))
         {
             routeName = "CalculateDistance";
-            result = CalculateDistance(distanceText, request.Command.CurrentLocation);
+            result = await CalculateDistanceAsync(distanceText, request.Command.CurrentLocation, cancellationToken);
         }
         else if (TryGetCommandText(input, SaveLocationPrefixes, out string locationText))
         {
@@ -271,10 +328,30 @@ public sealed class AssistantToolService(
             routeName = "CreateMileageEntry";
             result = await CreateMileageEntryAsync(mileageText, request.Command.CurrentLocation, cancellationToken);
         }
+        else if (StartsWithAny(input, DaySummaryPrefixes))
+        {
+            routeName = "SummarizeDay";
+            result = await SummarizeDayAsync(input, cancellationToken);
+        }
+        else if (IsDaySummaryRequest(input))
+        {
+            routeName = "SummarizeDay";
+            result = await SummarizeDayAsync(input, cancellationToken);
+        }
+        else if (IsRemindersDueThisWeekRequest(input))
+        {
+            routeName = "ShowRemindersDueThisWeek";
+            result = await ShowRemindersDueThisWeekAsync(cancellationToken);
+        }
         else if (StartsWithAny(input, PlanningPrefixes))
         {
             routeName = "ShowPlanning";
             result = await ShowPlanningAsync(input, cancellationToken);
+        }
+        else if (TryGetCommandText(input, TaskCompletionPrefixes, out string taskCompletionQuery))
+        {
+            routeName = "MarkTaskCompleted";
+            result = await MarkTaskCompletedAsync(taskCompletionQuery, cancellationToken);
         }
         else if (TryGetCommandText(input, CalculatePrefixes, out string expression))
         {
@@ -335,11 +412,18 @@ public sealed class AssistantToolService(
         CancellationToken cancellationToken = default)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
+
+        if (request.Action.Actions is { Count: > 0 })
+        {
+            return await ExecutePlannedActionBatchAsync(request, cancellationToken);
+        }
+
         AssistantToolActionResult result = request.Action.ActionType switch
         {
             AssistantActionTypeDto.CreateNote => await ExecutePlannedNoteAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateTask => await ExecutePlannedTaskAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateReminder => await ExecutePlannedReminderAsync(request, cancellationToken),
+            AssistantActionTypeDto.MarkTaskCompleted => await ExecutePlannedTaskCompletionAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateMemory => await ExecutePlannedMemoryAsync(request, cancellationToken),
             AssistantActionTypeDto.CreateMileageEntry => await CreateMileageEntryAsync(
                 request.Action.Description ?? request.Action.Query ?? request.Action.Title ?? request.Command.Input,
@@ -357,9 +441,10 @@ public sealed class AssistantToolService(
                 request.Action.Query ?? request.Action.Title ?? request.Command.Input,
                 request.Command.CurrentLocation,
                 cancellationToken),
-            AssistantActionTypeDto.CalculateDistance => CalculateDistance(
+            AssistantActionTypeDto.CalculateDistance => await CalculateDistanceAsync(
                 request.Action.Query ?? request.Action.Description ?? request.Command.Input,
-                request.Command.CurrentLocation),
+                request.Command.CurrentLocation,
+                cancellationToken),
             _ => AssistantToolActionResult.NotHandled
         };
 
@@ -373,6 +458,49 @@ public sealed class AssistantToolService(
         return result;
     }
 
+    private async Task<AssistantToolActionResult> ExecutePlannedActionBatchAsync(
+        AssistantPlannedToolActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        List<AssistantToolActionResult> handledResults = [];
+
+        foreach (AssistantPlannedToolAction action in request.Action.Actions!.Where(action => action.ActionType != AssistantActionTypeDto.Unknown))
+        {
+            AssistantToolActionResult childResult = await ExecutePlannedActionAsync(
+                request with { Action = action with { Actions = null, ResponseText = null } },
+                cancellationToken);
+
+            if (childResult.WasHandled)
+            {
+                handledResults.Add(childResult);
+            }
+        }
+
+        if (handledResults.Count == 0)
+        {
+            return AssistantToolActionResult.NotHandled;
+        }
+
+        string responseText = BuildBatchActionResponseText(request.Action.ResponseText, handledResults);
+        AssistantToolActionResult firstResult = handledResults[0];
+
+        return Handled(
+            request.Action.ActionType == AssistantActionTypeDto.Unknown
+                ? firstResult.ActionType
+                : request.Action.ActionType,
+            responseText,
+            handledResults.Count == 1 ? firstResult.RelatedEntityId : null,
+            handledResults.Count == 1 ? firstResult.RelatedEntityType : null);
+    }
+
+    private async Task<AssistantToolActionResult> ExecutePlannedTaskCompletionAsync(
+        AssistantPlannedToolActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        return await MarkTaskCompletedAsync(
+            request.Action.Query ?? request.Action.Title ?? request.Action.Description ?? request.Command.Input,
+            cancellationToken);
+    }
     /// <summary>
     /// Creates a long-term memory item from a structured assistant plan.
     /// </summary>
@@ -485,8 +613,19 @@ public sealed class AssistantToolService(
             request.Action.ScheduledAt,
             request.Action.TimeZoneId);
         DateOnly? plannedFor = dueAtUtc.HasValue
-            ? DateOnly.FromDateTime(dueAtUtc.Value.UtcDateTime)
+            ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(dueAtUtc.Value.ToUniversalTime(), ResolveTimeZone(request.Action.TimeZoneId)).DateTime)
             : ParsePlannedDate(request.Action.ScheduledAt, request.Action.TimeZoneId);
+
+        if (dueAtUtc == null && string.IsNullOrWhiteSpace(request.Action.ScheduledAt))
+        {
+            dueAtUtc = request.Command.RequestedAtUtc.ToUniversalTime().AddHours(2);
+            plannedFor = GetLocalDate(request.Command.RequestedAtUtc, request.Action.TimeZoneId);
+        }
+        else if (!plannedFor.HasValue && ShouldPlanTaskForToday(request.Command.Input))
+        {
+            plannedFor = GetLocalDate(request.Command.RequestedAtUtc, request.Action.TimeZoneId);
+        }
+
         string? description = BuildPlannedDescription(request.Action.Description, request.Action.EndsAt);
         TaskPriorityDto priority = request.Action.Priority ?? ParseTaskPriority(title);
 
@@ -502,7 +641,7 @@ public sealed class AssistantToolService(
         if (!request.Action.CreateLinkedReminder)
         {
             string dueText = taskItem.DueAtUtc.HasValue
-                ? $" Due at {taskItem.DueAtUtc.Value:u}."
+                ? $" Due at {FormatLocalDateTime(taskItem.DueAtUtc.Value, request.Action.TimeZoneId)}."
                 : string.Empty;
 
             return Handled(
@@ -543,11 +682,10 @@ public sealed class AssistantToolService(
             AssistantActionTypeDto.CreateTask,
             GetPlannedResponseText(
                 request.Action.ResponseText,
-                $"Created task \"{taskItem.Title}\" and linked reminder \"{reminder.Title}\" for {reminderAtUtc:u}."),
+                $"Created task \"{taskItem.Title}\" and linked reminder \"{reminder.Title}\" for {FormatLocalDateTime(reminderAtUtc, request.Action.TimeZoneId)}."),
             taskItem.Id,
             "Task");
     }
-
     private async Task<AssistantToolActionResult> ExecutePlannedReminderAsync(
         AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
@@ -559,6 +697,13 @@ public sealed class AssistantToolService(
             request.Action.Title ??
             string.Empty);
 
+        if (HasAmbiguousReminderTarget(request.Command.Input, title, message))
+        {
+            return Handled(
+                AssistantActionTypeDto.CreateReminder,
+                "What should I remind you about tomorrow?");
+        }
+
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(message))
         {
             return AssistantToolActionResult.NotHandled;
@@ -568,35 +713,53 @@ public sealed class AssistantToolService(
                 request.Action.ReminderAt ?? request.Action.ScheduledAt,
                 request.Action.TimeZoneId)
             ?? ParseReminderTriggerAtUtc(
-                message,
+                string.IsNullOrWhiteSpace(message) ? request.Command.Input : message,
                 request.Command.RequestedAtUtc.ToUniversalTime());
         string normalizedTitle = string.IsNullOrWhiteSpace(title)
             ? CreateTitle(message, "New reminder")
             : title;
+        bool useCurrentLocationTrigger = WantsCurrentLocationReminder(request.Command.Input);
+
+        if (useCurrentLocationTrigger && request.Command.CurrentLocation == null)
+        {
+            return Handled(
+                AssistantActionTypeDto.CreateReminder,
+                "I need currentLocation to create a reminder linked to your current location.");
+        }
+
+        if (useCurrentLocationTrigger && IsTooInaccurateForSavedLocation(request.Command.CurrentLocation!))
+        {
+            return Handled(
+                AssistantActionTypeDto.CreateReminder,
+                $"NOAH got your current location, but its accuracy was about {request.Command.CurrentLocation!.AccuracyMeters:0} meters. That is too broad for a location-triggered reminder; please try again with a more accurate location fix.");
+        }
 
         ReminderDto reminder = await remindersService.CreateReminderAsync(
             new CreateReminderRequest(
                 normalizedTitle,
                 string.IsNullOrWhiteSpace(message) ? normalizedTitle : message,
-                ReminderTriggerTypeDto.Time,
+                useCurrentLocationTrigger ? ReminderTriggerTypeDto.Location : ReminderTriggerTypeDto.Time,
                 true,
                 triggerAtUtc,
-                null,
-                null,
+                useCurrentLocationTrigger ? request.Command.CurrentLocation : null,
+                useCurrentLocationTrigger ? 150 : null,
                 null,
                 null,
                 null),
             cancellationToken);
 
+        string locationText = useCurrentLocationTrigger
+            ? $" at {FormatCoordinate(request.Command.CurrentLocation!)}"
+            : string.Empty;
+
         return Handled(
             AssistantActionTypeDto.CreateReminder,
             GetPlannedResponseText(
                 request.Action.ResponseText,
-                $"Created reminder \"{reminder.Title}\" for {triggerAtUtc:u}."),
+                $"Created reminder \"{reminder.Title}\" for {FormatLocalDateTime(triggerAtUtc, request.Action.TimeZoneId)}{locationText}."),
             reminder.Id,
             "Reminder");
     }
-
     private async Task<AssistantToolActionResult> ExecutePlannedDayPlanAsync(
         AssistantPlannedToolActionRequest request,
         CancellationToken cancellationToken)
@@ -620,13 +783,138 @@ public sealed class AssistantToolService(
                 BuildDayPlanResponseText(dayPlan)));
     }
 
+    private async Task<AssistantToolActionResult> SummarizeDayAsync(
+        string input,
+        CancellationToken cancellationToken)
+    {
+        DateOnly date = ParsePlanDate(input);
+        DayPlanDto dayPlan = await planningService.GetDayPlanAsync(
+            date,
+            DefaultTimeZoneId,
+            cancellationToken);
+
+        TimeZoneInfo timeZone = ResolveTimeZone(DefaultTimeZoneId);
+        (DateTimeOffset dayStartUtc, DateTimeOffset nextDayStartUtc) = GetUtcDayWindow(date, timeZone);
+        SearchResponse noteSearchResponse = await searchService.SearchAsync(
+            new SearchRequest(
+                string.Empty,
+                [SearchResultTypeDto.Note],
+                dayStartUtc,
+                nextDayStartUtc,
+                0,
+                20),
+            cancellationToken);
+
+        return Handled(
+            AssistantActionTypeDto.ShowDayPlan,
+            BuildDaySummaryResponseText(dayPlan, noteSearchResponse.Results));
+    }
+
+    private async Task<AssistantToolActionResult> ShowRemindersDueThisWeekAsync(CancellationToken cancellationToken)
+    {
+        DateOnly today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+        DateOnly weekStart = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        DateOnly weekEndExclusive = weekStart.AddDays(7);
+        TimeZoneInfo timeZone = ResolveTimeZone(DefaultTimeZoneId);
+        DateTimeOffset fromUtc = ToUtcStartOfDay(weekStart, timeZone);
+        DateTimeOffset toUtc = ToUtcStartOfDay(weekEndExclusive, timeZone);
+        SearchResponse searchResponse = await searchService.SearchAsync(
+            new SearchRequest(
+                string.Empty,
+                [SearchResultTypeDto.Reminder],
+                fromUtc,
+                toUtc,
+                0,
+                25),
+            cancellationToken);
+
+        IReadOnlyList<AssistantContextSearchResult> searchResults = searchResponse.Results
+            .Select(MapToContextSearchResult)
+            .ToList();
+
+        return Handled(
+            AssistantActionTypeDto.Search,
+            BuildSearchResponseText(
+                new AssistantSearchCriteria(string.Empty, [SearchResultTypeDto.Reminder]),
+                searchResults),
+            searchResults: searchResults);
+    }
+    private async Task<AssistantToolActionResult> MarkTaskCompletedAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        string normalizedQuery = CleanTaskCompletionQuery(query);
+
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            return AssistantToolActionResult.NotHandled;
+        }
+
+        IReadOnlyList<TaskItemDto> taskItems = await tasksService.GetTaskItemsAsync(cancellationToken);
+        List<ScoredTaskMatch> matches = taskItems
+            .Where(taskItem => taskItem.Status is not TaskItemStatusDto.Completed and not TaskItemStatusDto.Cancelled)
+            .Select(taskItem => new ScoredTaskMatch(taskItem, ScoreTaskMatch(taskItem, normalizedQuery)))
+            .Where(match => match.Score > 0)
+            .OrderByDescending(match => match.Score)
+            .ThenBy(match => match.Task.DueAtUtc ?? DateTimeOffset.MaxValue)
+            .ThenBy(match => match.Task.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            return Handled(
+                AssistantActionTypeDto.MarkTaskCompleted,
+                $"I could not find an open task matching \"{normalizedQuery}\".");
+        }
+
+        ScoredTaskMatch bestMatch = matches[0];
+        bool hasAmbiguousTopMatch = matches.Count > 1 &&
+                                    matches[1].Score == bestMatch.Score &&
+                                    !string.Equals(bestMatch.Task.Title, normalizedQuery, StringComparison.OrdinalIgnoreCase);
+
+        if (hasAmbiguousTopMatch)
+        {
+            string options = string.Join(
+                ", ",
+                matches.Take(3).Select(match => $"\"{match.Task.Title}\""));
+
+            return Handled(
+                AssistantActionTypeDto.MarkTaskCompleted,
+                $"I found multiple open tasks matching \"{normalizedQuery}\": {options}. Please be more specific.");
+        }
+
+        TaskItemDto? updatedTask = await tasksService.UpdateTaskItemAsync(
+            bestMatch.Task.Id,
+            new UpdateTaskItemRequest(
+                bestMatch.Task.Title,
+                bestMatch.Task.Description,
+                TaskItemStatusDto.Completed,
+                bestMatch.Task.Priority,
+                bestMatch.Task.DueAtUtc,
+                bestMatch.Task.PlannedFor),
+            cancellationToken);
+
+        if (updatedTask == null)
+        {
+            return Handled(
+                AssistantActionTypeDto.MarkTaskCompleted,
+                $"I found task \"{bestMatch.Task.Title}\", but it no longer exists.");
+        }
+
+        return Handled(
+            AssistantActionTypeDto.MarkTaskCompleted,
+            $"Marked task \"{updatedTask.Title}\" as completed.",
+            updatedTask.Id,
+            "Task");
+    }
     private async Task<AssistantToolActionResult> SaveLocationAsync(
         string locationText,
         GeoCoordinateDto? currentLocation,
         CancellationToken cancellationToken)
     {
         string body = NormalizeCommandBody(locationText);
-        GeoCoordinateDto? coordinate = TryParseFirstCoordinate(body, out string coordinateText)
+        bool explicitCoordinate = TryParseFirstCoordinate(body, out string coordinateText);
+        GeoCoordinateDto? coordinate = explicitCoordinate
             ? ParseCoordinate(coordinateText)
             : currentLocation;
 
@@ -635,6 +923,13 @@ public sealed class AssistantToolService(
             return Handled(
                 AssistantActionTypeDto.SaveLocation,
                 "I need a currentLocation value or coordinates like \"52.3676, 4.9041\" to save a location.");
+        }
+
+        if (!explicitCoordinate && IsTooInaccurateForSavedLocation(coordinate))
+        {
+            return Handled(
+                AssistantActionTypeDto.SaveLocation,
+                $"Your current location accuracy is about {coordinate.AccuracyMeters:0} meters, which is too broad to save as a precise place. Please share a more accurate currentLocation or exact coordinates.");
         }
 
         string name = RemoveCoordinateText(body, coordinateText);
@@ -658,7 +953,6 @@ public sealed class AssistantToolService(
             savedLocation.Id,
             "SavedLocation");
     }
-
     private async Task<AssistantToolActionResult> FindNearbyPlacesAsync(
         string nearbyText,
         GeoCoordinateDto? currentLocation,
@@ -671,15 +965,15 @@ public sealed class AssistantToolService(
                 "I need currentLocation to find nearby places.");
         }
 
-        string query = NormalizeCommandBody(nearbyText);
+        string originalQuery = NormalizeCommandBody(nearbyText);
+        int requestedCount = ParseRequestedResultCount(originalQuery) ?? 5;
+        double radiusKilometers = ParseRadiusKilometers(originalQuery) ?? DefaultNearbyRadiusKilometers;
+        string query = CleanNearbyQuery(originalQuery);
 
         if (string.IsNullOrWhiteSpace(query))
         {
-            query = "restaurant";
+            query = "general nearby places";
         }
-
-        double radiusKilometers = ParseRadiusKilometers(query) ?? DefaultNearbyRadiusKilometers;
-        query = CleanRadiusText(query);
 
         NearbyPlacesResponse nearbyPlaces = await locationsService.GetNearbyPlacesAsync(
             new NearbyPlacesRequest(currentLocation, query, radiusKilometers),
@@ -687,12 +981,12 @@ public sealed class AssistantToolService(
 
         return Handled(
             AssistantActionTypeDto.FindNearbyPlaces,
-            BuildNearbyPlacesResponseText(query, radiusKilometers, nearbyPlaces));
+            BuildNearbyPlacesResponseText(query, radiusKilometers, nearbyPlaces, requestedCount));
     }
-
-    private AssistantToolActionResult CalculateDistance(
+    private async Task<AssistantToolActionResult> CalculateDistanceAsync(
         string distanceText,
-        GeoCoordinateDto? currentLocation)
+        GeoCoordinateDto? currentLocation,
+        CancellationToken cancellationToken)
     {
         string body = NormalizeCommandBody(distanceText);
         List<GeoCoordinateDto> coordinates = ParseCoordinates(body).ToList();
@@ -704,20 +998,35 @@ public sealed class AssistantToolService(
             ? coordinates[1]
             : coordinates.FirstOrDefault();
 
+        string destinationQuery = CleanDistanceDestinationQuery(body);
+
+        if (to == null && !string.IsNullOrWhiteSpace(destinationQuery))
+        {
+            GeocodeResponse geocodeResponse = await locationsService.GeocodeAsync(
+                new GeocodeRequest(destinationQuery),
+                cancellationToken);
+            to = geocodeResponse.Results
+                .OrderByDescending(result => result.Importance ?? 0)
+                .FirstOrDefault()
+                ?.Coordinate;
+        }
+
         if (from == null || to == null)
         {
             return Handled(
                 AssistantActionTypeDto.CalculateDistance,
-                "I need either two coordinates, or currentLocation plus one destination coordinate.");
+                "I need your current location and a destination, or two coordinates, to calculate the distance.");
         }
 
         DistanceResponse distance = locationsService.CalculateDistance(new DistanceRequest(from, to));
+        string destinationText = string.IsNullOrWhiteSpace(destinationQuery)
+            ? "the destination"
+            : destinationQuery;
 
         return Handled(
             AssistantActionTypeDto.CalculateDistance,
-            $"The distance is {distance.DistanceKilometers:0.##} km.");
+            $"The distance to {destinationText} is {distance.DistanceKilometers:0.##} km.");
     }
-
     private async Task<AssistantToolActionResult> GeocodeAsync(
         string geocodeText,
         CancellationToken cancellationToken)
@@ -950,6 +1259,16 @@ public sealed class AssistantToolService(
             searchResult.RelevantAtUtc);
     }
 
+    private static AssistantSearchCriteria? TryBuildBroadContextSearchCriteria(string input)
+    {
+        string normalizedInput = NormalizeCommandInput(input);
+
+        return BroadSavedItemsContextRegex.IsMatch(normalizedInput)
+            ? new AssistantSearchCriteria(
+                string.Empty,
+                [SearchResultTypeDto.Task, SearchResultTypeDto.Reminder, SearchResultTypeDto.Note])
+            : null;
+    }
     private static bool ShouldSearchForContext(string input)
     {
         string normalizedInput = NormalizeCommandInput(input);
@@ -1057,6 +1376,11 @@ public sealed class AssistantToolService(
             @"^\s*(?:(?:hey|hi)\s+noah[\s,:\-]*)?(?:(?:please|can you|could you|would you|will you|can u|could u|would u)\s+)+",
             string.Empty,
             RegexOptions.IgnoreCase);
+        normalizedValue = Regex.Replace(
+            normalizedValue,
+            @"^\s*(?:thank\s+you|thanks?)[\s,!?.:\-]*(?:now[\s,!?.:\-]*)?",
+            string.Empty,
+            RegexOptions.IgnoreCase);
 
         return normalizedValue.TrimStart(':', '-', '.', ',', ' ').Trim();
     }
@@ -1067,6 +1391,229 @@ public sealed class AssistantToolService(
         return MemoryRecallIntentRegex.IsMatch(normalizedInput);
     }
 
+    private static string BuildBatchActionResponseText(
+        string? plannedResponseText,
+        IReadOnlyList<AssistantToolActionResult> handledResults)
+    {
+        StringBuilder responseBuilder = new();
+        string normalizedPlannedResponse = NormalizeCommandBody(plannedResponseText ?? string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(normalizedPlannedResponse) &&
+            !PlannedToolSyntaxResponseRegex.IsMatch(normalizedPlannedResponse))
+        {
+            responseBuilder.AppendLine(normalizedPlannedResponse);
+            responseBuilder.AppendLine();
+        }
+
+        responseBuilder.Append("Executed ");
+        responseBuilder.Append(handledResults.Count);
+        responseBuilder.AppendLine(" NOAH action(s):");
+
+        foreach (IGrouping<AssistantActionTypeDto, AssistantToolActionResult> group in handledResults.GroupBy(result => result.ActionType))
+        {
+            responseBuilder.Append("- ");
+            responseBuilder.Append(FormatActionTypeCount(group.Key, group.Count()));
+            responseBuilder.AppendLine();
+        }
+
+        foreach (AssistantToolActionResult result in handledResults.Where(result => !string.IsNullOrWhiteSpace(result.ResponseText)).Take(8))
+        {
+            responseBuilder.Append("- ");
+            responseBuilder.AppendLine(result.ResponseText!.Trim());
+        }
+
+        return responseBuilder.ToString().Trim();
+    }
+
+    private static string FormatActionTypeCount(AssistantActionTypeDto actionType, int count)
+    {
+        string label = actionType switch
+        {
+            AssistantActionTypeDto.CreateTask => count == 1 ? "task created" : "tasks created",
+            AssistantActionTypeDto.CreateReminder => count == 1 ? "reminder created" : "reminders created",
+            AssistantActionTypeDto.CreateNote => count == 1 ? "note created" : "notes created",
+            AssistantActionTypeDto.MarkTaskCompleted => count == 1 ? "task completed" : "tasks completed",
+            AssistantActionTypeDto.CreateMemory => count == 1 ? "memory saved" : "memories saved",
+            _ => actionType.ToString()
+        };
+
+        return $"{count} {label}";
+    }
+
+    private static string BuildDaySummaryResponseText(
+        DayPlanDto dayPlan,
+        IReadOnlyList<SearchResultDto> notes)
+    {
+        StringBuilder responseBuilder = new();
+        responseBuilder.AppendLine($"Summary for {dayPlan.Date:yyyy-MM-dd}: {dayPlan.Tasks.Count} task(s), {dayPlan.Reminders.Count} reminder(s), {notes.Count} note(s).");
+        AppendTaskSummary(responseBuilder, dayPlan.Tasks);
+        AppendReminderSummary(responseBuilder, dayPlan.Reminders);
+        AppendNoteSummary(responseBuilder, notes);
+
+        return responseBuilder.ToString().Trim();
+    }
+
+    private static void AppendTaskSummary(StringBuilder responseBuilder, IReadOnlyList<TaskItemDto> tasks)
+    {
+        responseBuilder.AppendLine();
+        responseBuilder.AppendLine("Tasks:");
+
+        if (tasks.Count == 0)
+        {
+            responseBuilder.AppendLine("- None found.");
+            return;
+        }
+
+        foreach (TaskItemDto task in tasks.Take(8))
+        {
+            responseBuilder.Append("- ");
+            responseBuilder.Append(task.Title);
+            responseBuilder.Append($" ({task.Status}, {task.Priority})");
+
+            if (task.DueAtUtc.HasValue)
+            {
+                responseBuilder.Append($" due {FormatLocalDateTime(task.DueAtUtc.Value, DefaultTimeZoneId)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.Description))
+            {
+                responseBuilder.Append(" - ");
+                responseBuilder.Append(task.Description);
+            }
+
+            responseBuilder.AppendLine();
+        }
+    }
+
+    private static void AppendReminderSummary(StringBuilder responseBuilder, IReadOnlyList<ReminderDto> reminders)
+    {
+        responseBuilder.AppendLine();
+        responseBuilder.AppendLine("Reminders:");
+
+        if (reminders.Count == 0)
+        {
+            responseBuilder.AppendLine("- None found.");
+            return;
+        }
+
+        foreach (ReminderDto reminder in reminders.Take(8))
+        {
+            responseBuilder.Append("- ");
+            responseBuilder.Append(reminder.Title);
+            responseBuilder.Append($" ({reminder.Status})");
+
+            if (reminder.TriggerAtUtc.HasValue)
+            {
+                responseBuilder.Append($" at {FormatLocalDateTime(reminder.TriggerAtUtc.Value, DefaultTimeZoneId)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(reminder.Message))
+            {
+                responseBuilder.Append(" - ");
+                responseBuilder.Append(reminder.Message);
+            }
+
+            responseBuilder.AppendLine();
+        }
+    }
+
+    private static void AppendNoteSummary(StringBuilder responseBuilder, IReadOnlyList<SearchResultDto> notes)
+    {
+        responseBuilder.AppendLine();
+        responseBuilder.AppendLine("Notes:");
+
+        if (notes.Count == 0)
+        {
+            responseBuilder.AppendLine("- None found.");
+            return;
+        }
+
+        foreach (SearchResultDto note in notes.Take(8))
+        {
+            responseBuilder.Append("- ");
+            responseBuilder.Append(note.Title);
+
+            if (!string.IsNullOrWhiteSpace(note.Preview))
+            {
+                responseBuilder.Append(" - ");
+                responseBuilder.Append(note.Preview);
+            }
+
+            responseBuilder.AppendLine();
+        }
+    }
+
+    private static string CleanTaskCompletionQuery(string value)
+    {
+        string normalizedValue = NormalizeCommandBody(value);
+        string? quotedText = TryExtractQuotedText(normalizedValue);
+
+        if (!string.IsNullOrWhiteSpace(quotedText))
+        {
+            return NormalizeWhitespace(quotedText).Trim(' ', '.', ',', ':', '?', '!', '"', '\'');
+        }
+
+        normalizedValue = Regex.Replace(
+            normalizedValue,
+            @"\b(?:mark|set|complete|completed|done|task|as|to|status|open|my|the)\b",
+            " ",
+            RegexOptions.IgnoreCase);
+        normalizedValue = Regex.Replace(
+            normalizedValue,
+            @"^\s*about\s+",
+            " ",
+            RegexOptions.IgnoreCase);
+        normalizedValue = Regex.Replace(
+            normalizedValue,
+            "[\"']",
+            " ",
+            RegexOptions.IgnoreCase);
+
+        return NormalizeWhitespace(normalizedValue).Trim(' ', '.', ',', ':', '?', '!');
+    }
+    private static int ScoreTaskMatch(TaskItemDto taskItem, string query)
+    {
+        string normalizedQuery = NormalizeWhitespace(query);
+        string[] terms = normalizedQuery
+            .Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(term => term.Length > 1)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (terms.Length == 0)
+        {
+            return 0;
+        }
+
+        int score = 0;
+        string title = taskItem.Title;
+        string description = taskItem.Description ?? string.Empty;
+
+        if (title.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            score += string.Equals(title, normalizedQuery, StringComparison.OrdinalIgnoreCase) ? 160 : 100;
+        }
+
+        if (description.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 50;
+        }
+
+        foreach (string term in terms)
+        {
+            if (title.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 20;
+            }
+
+            if (description.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 10;
+            }
+        }
+
+        return score;
+    }
     private static string BuildSearchResponseText(
         AssistantSearchCriteria searchCriteria,
         IReadOnlyList<AssistantContextSearchResult> searchResults)
@@ -1202,17 +1749,27 @@ public sealed class AssistantToolService(
     private static string BuildNearbyPlacesResponseText(
         string query,
         double radiusKilometers,
-        NearbyPlacesResponse nearbyPlaces)
+        NearbyPlacesResponse nearbyPlaces,
+        int requestedCount)
     {
-        if (nearbyPlaces.Places.Count == 0)
+        List<NearbyPlaceDto> places = nearbyPlaces.Places
+            .OrderBy(place => place.DistanceKilometers)
+            .Take(Math.Clamp(requestedCount, 1, 25))
+            .ToList();
+
+        string displayQuery = string.Equals(query, "general nearby places", StringComparison.OrdinalIgnoreCase)
+            ? "nearby places"
+            : query;
+
+        if (places.Count == 0)
         {
-            return $"I found no nearby places for \"{query}\" within {radiusKilometers:0.##} km.";
+            return $"I found no nearby places for \"{displayQuery}\" within {radiusKilometers:0.##} km.";
         }
 
         StringBuilder responseBuilder = new();
-        responseBuilder.AppendLine($"I found {nearbyPlaces.Places.Count} nearby place(s) for \"{query}\" within {radiusKilometers:0.##} km:");
+        responseBuilder.AppendLine($"I found {places.Count} nearby place(s) for \"{displayQuery}\" within {radiusKilometers:0.##} km:");
 
-        foreach (NearbyPlaceDto place in nearbyPlaces.Places.Take(5))
+        foreach (NearbyPlaceDto place in places)
         {
             responseBuilder.Append("- ");
             responseBuilder.Append(place.Name);
@@ -1229,7 +1786,6 @@ public sealed class AssistantToolService(
 
         return responseBuilder.ToString().Trim();
     }
-
     private static string BuildGeocodeResponseText(string query, GeocodeResponse geocodeResponse)
     {
         if (geocodeResponse.Results.Count == 0)
@@ -1405,6 +1961,13 @@ public sealed class AssistantToolService(
             : $"{normalizedDescription} {endText}";
     }
 
+    private static string FormatLocalDateTime(DateTimeOffset utcDateTime, string? timeZoneId)
+    {
+        TimeZoneInfo timeZone = ResolveTimeZone(timeZoneId);
+        DateTimeOffset localDateTime = TimeZoneInfo.ConvertTime(utcDateTime.ToUniversalTime(), timeZone);
+        return $"{localDateTime:yyyy-MM-dd HH:mm:ss} {timeZone.Id}";
+    }
+
     private static TimeZoneInfo ResolveTimeZone(string? timeZoneId)
     {
         try
@@ -1423,6 +1986,23 @@ public sealed class AssistantToolService(
         }
     }
 
+    private static (DateTimeOffset DayStartUtc, DateTimeOffset NextDayStartUtc) GetUtcDayWindow(
+        DateOnly date,
+        TimeZoneInfo timeZoneInfo)
+    {
+        DateTime localDayStart = date.ToDateTime(TimeOnly.MinValue);
+        DateTime localNextDayStart = date.AddDays(1).ToDateTime(TimeOnly.MinValue);
+
+        DateTimeOffset dayStartUtc = new DateTimeOffset(
+            localDayStart,
+            timeZoneInfo.GetUtcOffset(localDayStart)).ToUniversalTime();
+
+        DateTimeOffset nextDayStartUtc = new DateTimeOffset(
+            localNextDayStart,
+            timeZoneInfo.GetUtcOffset(localNextDayStart)).ToUniversalTime();
+
+        return (dayStartUtc, nextDayStartUtc);
+    }
     private DateOnly ParsePlanDate(string value)
     {
         if (ContainsAny(value, "tomorrow"))
@@ -1445,7 +2025,7 @@ public sealed class AssistantToolService(
     {
         Match match = Regex.Match(
             value,
-            @"\bwithin\s+(?<radius>\d+(?:[\.,]\d+)?)\s*(?<unit>km|kilometer|kilometers|m|meter|meters)\b",
+            @"\b(?:within|range\s+of|in\s+a\s+range\s+of|in\s+range\s+of)\s+(?<radius>\d+(?:[\.,]\d+)?)\s*(?<unit>km|kilometer|kilometers|m|meter|meters)\b",
             RegexOptions.IgnoreCase);
 
         if (!match.Success ||
@@ -1469,12 +2049,109 @@ public sealed class AssistantToolService(
     {
         return Regex.Replace(
                 value,
-                @"\bwithin\s+\d+(?:[\.,]\d+)?\s*(km|kilometer|kilometers|m|meter|meters)\b",
+                @"\b(?:within|range\s+of|in\s+a\s+range\s+of|in\s+range\s+of)\s+\d+(?:[\.,]\d+)?\s*(km|kilometer|kilometers|m|meter|meters)\b",
                 string.Empty,
                 RegexOptions.IgnoreCase)
             .Trim();
     }
 
+    private static string CleanNearbyQuery(string value)
+    {
+        string cleanedValue = CleanRadiusText(value);
+        cleanedValue = Regex.Replace(cleanedValue, @"\b(?:thank\s+you|thanks?|now|what(?:'s|s|\s+is)?|is)\b", " ", RegexOptions.IgnoreCase);
+        cleanedValue = Regex.Replace(cleanedValue, @"\b(?:find|show|list|get|give\s+me|sort(?:ed)?|by|distance|nearest|closest|nearby|near\s+me|around\s+me|within|range|of|in|a|an|the|my|current\s+location)\b", " ", RegexOptions.IgnoreCase);
+        cleanedValue = Regex.Replace(cleanedValue, @"\b(?:top\s+)?\d+\b", " ", RegexOptions.IgnoreCase);
+        cleanedValue = Regex.Replace(cleanedValue, @"\b(?:places?|things?|spots?)\b", " ", RegexOptions.IgnoreCase);
+        return NormalizeWhitespace(cleanedValue).Trim(' ', '.', ',', ':', '?', '!');
+    }
+
+    private static int? ParseRequestedResultCount(string value)
+    {
+        Match match = Regex.Match(value, @"\b(?:find|show|list|get|top)?\s*(?<count>\d{1,2})\b", RegexOptions.IgnoreCase);
+
+        return match.Success && int.TryParse(match.Groups["count"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count)
+            ? Math.Clamp(count, 1, 25)
+            : null;
+    }
+
+    private static bool IsTooInaccurateForSavedLocation(GeoCoordinateDto coordinate)
+    {
+        return coordinate.AccuracyMeters.HasValue &&
+               coordinate.AccuracyMeters.Value > MaximumCurrentLocationSaveAccuracyMeters;
+    }
+
+    private static bool ShouldPlanTaskForToday(string input)
+    {
+        return Regex.IsMatch(
+            NormalizeCommandBody(input),
+            @"\b(?:plan\s+(?:my\s+)?day|today|for\s+today)\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static DateOnly GetLocalDate(DateTimeOffset requestedAtUtc, string? timeZoneId)
+    {
+        TimeZoneInfo timeZone = ResolveTimeZone(timeZoneId);
+        DateTimeOffset localDateTime = TimeZoneInfo.ConvertTime(requestedAtUtc.ToUniversalTime(), timeZone);
+        return DateOnly.FromDateTime(localDateTime.DateTime);
+    }
+
+    private static bool WantsCurrentLocationReminder(string input)
+    {
+        string normalizedInput = NormalizeCommandBody(input);
+        return Regex.IsMatch(
+            normalizedInput,
+            @"\b(?:linked\s+to|tied\s+to|connected\s+to|at|using)\s+(?:my\s+)?current\s+location\b|\bcurrent\s+location\b.*\breminder\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static bool HasAmbiguousReminderTarget(string input, string title, string message)
+    {
+        string normalizedInput = NormalizeCommandBody(input);
+        bool inputIsVague = Regex.IsMatch(
+            normalizedInput,
+            @"\bremind\s+me\b.*\b(?:that\s+thing|the\s+thing|this\s+thing)\b",
+            RegexOptions.IgnoreCase);
+
+        if (!inputIsVague)
+        {
+            return false;
+        }
+
+        return VagueReminderTargetRegex.IsMatch(title) ||
+               VagueReminderTargetRegex.IsMatch(message) ||
+               !Regex.IsMatch(normalizedInput, "[\"'](?<text>[^\"']+)[\"']");
+    }
+
+    private static string CleanDistanceDestinationQuery(string value)
+    {
+        string cleanedValue = Regex.Replace(value, @"\b(?:how\s+far\s+is|distance\s+(?:to|from)?|calculate\s+distance\s+(?:to|from)?|from\s+my\s+current\s+location|my\s+current\s+location|current\s+location|from|to)\b", " ", RegexOptions.IgnoreCase);
+        cleanedValue = Regex.Replace(cleanedValue, @"-?\d+(?:[\.,]\d+)?\s*,\s*-?\d+(?:[\.,]\d+)?", " ", RegexOptions.IgnoreCase);
+        return NormalizeWhitespace(cleanedValue).Trim(' ', '.', ',', ':', '?', '!');
+    }
+
+    private static bool IsDaySummaryRequest(string input)
+    {
+        return DaySummaryIntentRegex.IsMatch(NormalizeCommandBody(input));
+    }
+
+    private static bool IsRemindersDueThisWeekRequest(string input)
+    {
+        return RemindersDueThisWeekIntentRegex.IsMatch(NormalizeCommandBody(input));
+    }
+
+    private static DateTimeOffset ToUtcStartOfDay(DateOnly date, TimeZoneInfo timeZoneInfo)
+    {
+        DateTime localDayStart = date.ToDateTime(TimeOnly.MinValue);
+        return new DateTimeOffset(
+            localDayStart,
+            timeZoneInfo.GetUtcOffset(localDayStart)).ToUniversalTime();
+    }
+
+    private static string? TryExtractQuotedText(string value)
+    {
+        Match match = Regex.Match(value, "[\"'](?<text>[^\"']+)[\"']");
+        return match.Success ? match.Groups["text"].Value : null;
+    }
     private static decimal? ParseFirstDecimal(string value)
     {
         Match match = Regex.Match(value, @"-?\d+(?:[\.,]\d+)?");
@@ -1606,4 +2283,7 @@ public sealed class AssistantToolService(
     private sealed record AssistantSearchCriteria(
         string Query,
         IReadOnlyList<SearchResultTypeDto> Types);
+    private sealed record ScoredTaskMatch(
+        TaskItemDto Task,
+        int Score);
 }

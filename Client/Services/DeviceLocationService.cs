@@ -30,13 +30,28 @@ public sealed record CurrentLocationResult(
 /// </summary>
 public sealed class DeviceLocationService : IUserLocationService
 {
+    private const double MaximumUsefulAccuracyMeters = 1000;
+    private const string LocationPermissionConfirmedPreferenceKey = "location_permission_confirmed";
+    private static readonly TimeSpan MaximumCachedLocationAge = TimeSpan.FromMinutes(10);
+
     public async Task<CurrentLocationResult> TryGetCurrentLocationAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            PermissionStatus permissionStatus = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+            bool permissionWasPreviouslyGranted = Preferences.Default.Get(LocationPermissionConfirmedPreferenceKey, false);
+            PermissionStatus permissionStatus = await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
 
-            if (permissionStatus != PermissionStatus.Granted)
+            if (permissionStatus != PermissionStatus.Granted && !permissionWasPreviouslyGranted)
+            {
+                permissionStatus = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+            }
+
+            if (permissionStatus == PermissionStatus.Granted)
+            {
+                Preferences.Default.Set(LocationPermissionConfirmedPreferenceKey, true);
+            }
+
+            if (permissionStatus != PermissionStatus.Granted && !permissionWasPreviouslyGranted)
             {
                 return new CurrentLocationResult(
                     false,
@@ -47,10 +62,10 @@ public sealed class DeviceLocationService : IUserLocationService
 
             Location? location = await Geolocation.Default.GetLastKnownLocationAsync();
 
-            if (location == null)
+            if (!IsAccurateEnough(location) || IsStale(location))
             {
                 location = await Geolocation.Default.GetLocationAsync(
-                    new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(10)),
+                    new GeolocationRequest(GeolocationAccuracy.Best, TimeSpan.FromSeconds(15)),
                     cancellationToken);
             }
 
@@ -61,6 +76,15 @@ public sealed class DeviceLocationService : IUserLocationService
                     false,
                     null,
                     "NOAH could not determine the current location.");
+            }
+
+            if (!IsAccurateEnough(location))
+            {
+                return new CurrentLocationResult(
+                    false,
+                    false,
+                    null,
+                    $"NOAH got a current location, but its accuracy was about {location.Accuracy:0} meters. Please try again when Windows can provide a more accurate location.");
             }
 
             return new CurrentLocationResult(
@@ -81,5 +105,17 @@ public sealed class DeviceLocationService : IUserLocationService
         {
             return new CurrentLocationResult(false, false, null, $"Location failed: {exception.Message}");
         }
+    }
+
+    private static bool IsAccurateEnough(Location? location)
+    {
+        return location != null &&
+               (!location.Accuracy.HasValue || location.Accuracy.Value <= MaximumUsefulAccuracyMeters);
+    }
+
+    private static bool IsStale(Location? location)
+    {
+        return location == null ||
+               DateTimeOffset.UtcNow - location.Timestamp.ToUniversalTime() > MaximumCachedLocationAge;
     }
 }

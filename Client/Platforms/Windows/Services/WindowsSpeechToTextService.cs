@@ -33,8 +33,11 @@ public sealed class WindowsSpeechToTextService : ISpeechToTextService
                 return new SpeechRecognitionResult(false, false, null, $"Speech recognition is unavailable ({compilationResult.Status}).");
             }
 
+            recognizer.UIOptions.AudiblePrompt = "Listening...";
+            recognizer.UIOptions.ExampleText = "Ask NOAH anything.";
+
             Windows.Media.SpeechRecognition.SpeechRecognitionResult recognitionResult =
-                await recognizer.RecognizeAsync();
+                await recognizer.RecognizeWithUIAsync();
 
             return recognitionResult.Status == SpeechRecognitionResultStatus.Success &&
                    !string.IsNullOrWhiteSpace(recognitionResult.Text)

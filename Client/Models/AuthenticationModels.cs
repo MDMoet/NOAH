@@ -6,7 +6,8 @@ namespace Client.Models;
 public sealed record AssistantClientSettings(
     string ApiBaseUrl,
     string ApiKey,
-    Guid? LastSelectedChatId);
+    Guid? LastSelectedChatId,
+    bool ShareLocationAutomatically);
 
 /// <summary>
 /// Requests a temporary NOAH access token.

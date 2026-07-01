@@ -38,6 +38,8 @@ public sealed class AssistantService(
         "The assistant request was cancelled.";
 
     private const int StructuredPlannerMaxTokens = 2048;
+    private const int MaximumDefaultConversationMemoryMessageCount = 8;
+    private const int ForcedConversationMemoryMessageCount = 12;
 
     private static readonly JsonSerializerOptions PlannerSerializerOptions = new(JsonSerializerDefaults.Web)
     {
@@ -62,11 +64,17 @@ public sealed class AssistantService(
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
 
     private static readonly Regex StructuredActionIntentRegex = new(
-        @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|create\b|add\b|save\b|make\b|write\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|where\s+is\b|find\s+coordinates\s+for\b|save\s+(?:my|this|current)\s+location\b|location\s*:|nearby\b|near\s+me\b|around\s+me\b|closest\b|nearest\b|distance(?:\s+(?:to|from))?\b|how\s+far\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
+        @"^(?:plan\s+this\b|schedule\b|set\s+(?:a\s+)?reminder\b|remind\s+me(?:\s+to)?\b|remember\b|keep\s+in\s+mind\b|for\s+future\s+reference\b|create\b|add\b|save\b|make\b|note(?:\s+down)?\b|search(?:\s+for)?\b|look\s+up\b|lookup\b|what\s+do\s+i\s+have\s+about\b|geocode\b|reverse\s+geocode\b|where\s+am\s+i\b|where\s+is\b|find\s+coordinates\s+for\b|save\s+(?:my|this|current)\s+location\b|location\s*:|nearby\b|near\s+me\b|around\s+me\b|closest\b|nearest\b|distance(?:\s+(?:to|from))?\b|how\s+far\b|calculate\b|log\s+mileage\b|mileage\s*:|backlog\b|overdue\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex SimpleAcknowledgementRegex = new(
         @"^\s*(?:thanks?|thank\s+you|ty|thx|ok(?:ay)?|got\s+it|sounds\s+good|nice|cool|great|good|perfect|wonderful|awesome|excellent|lovely|brilliant|sweet)\s*[!.?]*\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CodingRequestIntentRegex = new(
+        @"```|\b(?:c#|csharp|code|snippet|class|method|function|nullreferenceexception|exception|stack\s+trace|router|model\s+routing|llama\.cpp)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CurrentChatReferenceIntentRegex = new(
+        @"\b(?:this|current|our)\s+(?:chat|conversation|thread)\b|\bcompress\s+(?:this|current)\s+chat\b|\bsummari[sz]e\s+(?:this|current|our)\s+(?:chat|conversation|thread)\b|\bchat\s+(?:summary|context|history)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ExplicitNoteIntentRegex = new(
@@ -75,6 +83,10 @@ public sealed class AssistantService(
 
     private static readonly Regex ExplicitTaskIntentRegex = new(
         @"^(?:(?:create|add|make)\s+(?:(?:me|us)\s+)?(?:a\s+)?task\b|new\s+task\b|tasks?\s*:)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ExplicitTaskCompletionIntentRegex = new(
+        @"^(?:(?:mark|set)\s+(?:(?:my|the)\s+)?task\b.*\b(?:complete|completed|done)\b|complete\s+(?:(?:my|the)\s+)?task\b|task\s+complete\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex ExplicitReminderIntentRegex = new(
@@ -109,6 +121,26 @@ public sealed class AssistantService(
         @"^(?:show\s+me\s+(?:my\s+)?day\s+plan\b|show\s+day\s+plan\b|day\s+plan\b|plan\s+today\b|plan\s+tomorrow\b|planning\s+today\b|planning\s+tomorrow\b|today\s+plan\b|tomorrow\s+plan\b|week\s+plan\b|upcoming\s+plan\b|overdue\b|backlog\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex EmbeddedStructuredActionIntentRegex = new(
+        @"\b(?:and\s+)?(?:create|add|make)\s+(?:\d+\s+)?(?:tasks?|reminders?|notes?)\b|\bcreate\s+(?:a\s+)?task\s+for\s+(?:it|this)\b|\bmark\s+(?:(?:my|the)\s+)?task\b.*\b(?:complete|completed|done)\b|\bsummari[sz]e\s+my\s+day\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex EmbeddedTaskCreationIntentRegex = new(
+        @"\b(?:create|add|make)\s+(?:(?:me|us)\s+)?(?:a\s+)?task\b|\bcreate\s+(?:a\s+)?task\s+for\s+(?:it|this)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex SavedItemsPrioritizationIntentRegex = new(
+        @"\b(?:saved\s+items?|saved\s+(?:tasks?|reminders?|notes?)|top\s+\d+\s+things?|things?\s+i\s+should\s+do\s+next|next\s+(?:actions?|things?|steps?)|overwhelmed|what\s+should\s+i\s+do\s+first)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ToolLogicQuestionIntentRegex = new(
+        @"^(?:when\s+i\s+ask|if\s+i\s+ask|would\s+it\s+be|is\s+it\s+more\s+logical|what\s+would\s+be\s+more\s+logical)\b.*\b(?:command|request|logic|design|trigger\s+location|saved\s+location|current\s+location)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex NoahArchitectureTaskIntentRegex = new(
+        @"\bNOAH\b.*\b(?:llama\.cpp|model\s+routing|memory\s+sharing|assistant\s+endpoints)\b.*\bcreate\s+(?:a\s+)?task\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // The planner schema stays intentionally small so the assistant can cheaply decide
     // whether a NOAH action should run before we fall back to open-ended text generation.
     private const string StructuredActionSchema = """
@@ -118,7 +150,7 @@ public sealed class AssistantService(
           "properties": {
             "actionType": {
               "type": "string",
-              "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "CreateMemory", "CreateMileageEntry", "Search", "ShowDayPlan", "SaveLocation", "FindNearbyPlaces", "CalculateDistance" ]
+              "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "CreateMemory", "CreateMileageEntry", "Search", "ShowDayPlan", "SaveLocation", "FindNearbyPlaces", "CalculateDistance", "MarkTaskCompleted" ]
             },
             "title": { "type": [ "string", "null" ] },
             "description": { "type": [ "string", "null" ] },
@@ -133,7 +165,35 @@ public sealed class AssistantService(
             "reminderAt": { "type": [ "string", "null" ] },
             "reminderTitle": { "type": [ "string", "null" ] },
             "reminderMessage": { "type": [ "string", "null" ] },
-            "responseText": { "type": [ "string", "null" ] }
+            "responseText": { "type": [ "string", "null" ] },
+            "actions": {
+              "type": [ "array", "null" ],
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "actionType": {
+                    "type": "string",
+                    "enum": [ "Unknown", "CreateTask", "CreateNote", "CreateReminder", "CreateMemory", "CreateMileageEntry", "Search", "ShowDayPlan", "SaveLocation", "FindNearbyPlaces", "CalculateDistance", "MarkTaskCompleted" ]
+                  },
+                  "title": { "type": [ "string", "null" ] },
+                  "description": { "type": [ "string", "null" ] },
+                  "tags": { "type": [ "string", "null" ] },
+                  "query": { "type": [ "string", "null" ] },
+                  "scheduledAt": { "type": [ "string", "null" ] },
+                  "endsAt": { "type": [ "string", "null" ] },
+                  "timeZoneId": { "type": [ "string", "null" ] },
+                  "priority": { "type": [ "string", "null" ] },
+                  "isPinned": { "type": "boolean" },
+                  "createLinkedReminder": { "type": "boolean" },
+                  "reminderAt": { "type": [ "string", "null" ] },
+                  "reminderTitle": { "type": [ "string", "null" ] },
+                  "reminderMessage": { "type": [ "string", "null" ] },
+                  "responseText": { "type": [ "string", "null" ] }
+                },
+                "required": [ "actionType", "isPinned", "createLinkedReminder" ]
+              }
+            }
           },
           "required": [ "actionType", "isPinned", "createLinkedReminder" ]
         }
@@ -275,12 +335,16 @@ public sealed class AssistantService(
             }
 
             Stopwatch conversationMemoryStopwatch = Stopwatch.StartNew();
+            bool forceConversationMemory = ShouldForceConversationMemory(input);
+            int conversationMemoryTake = forceConversationMemory
+                ? ForcedConversationMemoryMessageCount
+                : Math.Min(assistantSettings.ConversationMemoryMessageCount, MaximumDefaultConversationMemoryMessageCount);
             IReadOnlyList<AssistantConversationMemoryEntry> conversationMemory =
-                assistantSettings.EnableChatMemory && assistantSettings.ConversationMemoryMessageCount > 0
+                (forceConversationMemory || assistantSettings.EnableChatMemory) && conversationMemoryTake > 0
                     ? await LoadConversationMemoryAsync(
                         assistantInteraction.Id,
                         assistantInteraction.ChatId,
-                        assistantSettings.ConversationMemoryMessageCount,
+                        conversationMemoryTake,
                         cancellationToken)
                     : Array.Empty<AssistantConversationMemoryEntry>();
             logger.LogInformation(
@@ -565,23 +629,25 @@ public sealed class AssistantService(
                 routingDecision,
                 cancellationToken);
 
-            if (plannedAction == null || plannedAction.ActionType == AssistantActionTypeDto.Unknown)
+            if (plannedAction == null || !HasExecutablePlannedAction(plannedAction))
             {
                 logger.LogInformation(
                     "Structured assistant action planner did not produce an executable action.");
             }
             else
             {
+                AssistantActionTypeDto effectivePlannedActionType = GetEffectivePlannedActionType(plannedAction);
+
                 logger.LogInformation(
                     "Structured assistant action planner produced action {ActionType}.",
-                    plannedAction.ActionType);
+                    effectivePlannedActionType);
 
                 if (explicitActionHint.HasValue &&
-                    plannedAction.ActionType != explicitActionHint.Value)
+                    !ContainsPlannedActionType(plannedAction, explicitActionHint.Value))
                 {
                     logger.LogWarning(
                         "Discarded structured assistant action {PlannedActionType} because the explicit user intent was {ExplicitActionType}.",
-                        plannedAction.ActionType,
+                        effectivePlannedActionType,
                         explicitActionHint.Value);
                 }
                 else
@@ -617,12 +683,17 @@ public sealed class AssistantService(
                 explicitActionHint.Value,
                 cancellationToken);
 
-            if (fallbackAction == null || fallbackAction.ActionType != explicitActionHint.Value)
+            if (fallbackAction == null || !ContainsPlannedActionType(fallbackAction, explicitActionHint.Value))
             {
-                logger.LogInformation(
-                    "Explicit structured fallback for action {ActionType} did not produce an executable plan.",
-                    explicitActionHint.Value);
-                return AssistantToolActionResult.NotHandled;
+                fallbackAction = TryCreateDeterministicFallbackAction(request.Input, explicitActionHint.Value);
+
+                if (fallbackAction == null)
+                {
+                    logger.LogInformation(
+                        "Explicit structured fallback for action {ActionType} did not produce an executable plan.",
+                        explicitActionHint.Value);
+                    return AssistantToolActionResult.NotHandled;
+                }
             }
 
             AssistantToolActionResult fallbackExecutionResult =
@@ -758,6 +829,10 @@ public sealed class AssistantService(
         promptBuilder.AppendLine("For CreateNote, generate the stored note content itself. Use title for a concise note title and description for the full note body.");
         promptBuilder.AppendLine("When the user asks you to note, write, draft, or save content for them, do not just repeat the command words. Actually write the requested content.");
         promptBuilder.AppendLine("For CreateTask and CreateReminder, generate clean stored titles and descriptions/messages instead of copying the request verbatim when a better result is obvious.");
+        promptBuilder.AppendLine("If the user asks for multiple tasks, reminders, notes, or a plan with several created items, put each executable item in actions and put the overall summary in responseText.");
+        promptBuilder.AppendLine("If the user asks for an answer plus a NOAH action, put the answer in responseText and still include the executable action fields.");
+        promptBuilder.AppendLine("If the user asks to create a task anywhere in a mixed request, include a CreateTask action; do not satisfy that task request with CreateNote alone.");
+        promptBuilder.AppendLine("For MarkTaskCompleted, use query for the task-matching phrase and do not invent a task id.");
         promptBuilder.AppendLine("For CreateMemory, store durable facts, preferences, or reference details the user explicitly wants remembered. Use title for a concise label and description for the actual memory text.");
         promptBuilder.AppendLine("For FindNearbyPlaces, use query for the place type or search term, such as cafe, gas station, or pharmacy.");
         promptBuilder.AppendLine("For SaveLocation, use title for the saved location name and rely on currentLocation or coordinates already present in the request.");
@@ -910,6 +985,11 @@ public sealed class AssistantService(
                 promptBuilder.AppendLine("- Put useful task details in description.");
                 promptBuilder.AppendLine("- Use scheduledAt when the user gives a due date or start time.");
                 break;
+            case AssistantActionTypeDto.MarkTaskCompleted:
+                promptBuilder.AppendLine("MarkTaskCompleted guidance:");
+                promptBuilder.AppendLine("- Put the phrase that should match the existing task in query.");
+                promptBuilder.AppendLine("- Do not use this action to create a new task.");
+                break;
             case AssistantActionTypeDto.CreateReminder:
                 promptBuilder.AppendLine("CreateReminder guidance:");
                 promptBuilder.AppendLine("- Put the reminder title in reminderTitle or title.");
@@ -1003,6 +1083,45 @@ public sealed class AssistantService(
         return promptBuilder.ToString();
     }
 
+    private static AssistantPlannedToolAction? TryCreateDeterministicFallbackAction(
+        string input,
+        AssistantActionTypeDto explicitActionType)
+    {
+        if (explicitActionType != AssistantActionTypeDto.CreateTask ||
+            !NoahArchitectureTaskIntentRegex.IsMatch(NormalizeIntentInput(input)))
+        {
+            return null;
+        }
+
+        const string architectureSummary = "Current architecture: NOAH uses llama.cpp-backed local models, routes coding and general requests to the appropriate model, shares selected chat and saved context through bounded memory, and exposes assistant endpoints that can execute structured actions such as notes, tasks, reminders, search, locations, and planning.";
+        const string nextStep = "Next step: harden the structured assistant action path so mixed requests reliably execute every requested action, report local-time results, and preserve the created artifacts with enough context for follow-up work.";
+
+        return CreatePlannedToolAction(
+            AssistantActionTypeDto.CreateTask,
+            title: "Harden NOAH structured assistant action execution",
+            description: architectureSummary + " " + nextStep,
+            responseText: architectureSummary + Environment.NewLine + Environment.NewLine + nextStep);
+    }
+    private static bool HasExecutablePlannedAction(AssistantPlannedToolAction plannedAction)
+    {
+        return plannedAction.ActionType != AssistantActionTypeDto.Unknown ||
+               plannedAction.Actions?.Any(action => action.ActionType != AssistantActionTypeDto.Unknown) == true;
+    }
+
+    private static AssistantActionTypeDto GetEffectivePlannedActionType(AssistantPlannedToolAction plannedAction)
+    {
+        return plannedAction.ActionType != AssistantActionTypeDto.Unknown
+            ? plannedAction.ActionType
+            : plannedAction.Actions?.FirstOrDefault(action => action.ActionType != AssistantActionTypeDto.Unknown)?.ActionType ??
+              AssistantActionTypeDto.Unknown;
+    }
+    private static bool ContainsPlannedActionType(
+        AssistantPlannedToolAction plannedAction,
+        AssistantActionTypeDto actionType)
+    {
+        return plannedAction.ActionType == actionType ||
+               plannedAction.Actions?.Any(action => action.ActionType == actionType) == true;
+    }
     private static AssistantPlannedToolAction? TryDeserializePlannedAction(string? responseText)
     {
         if (string.IsNullOrWhiteSpace(responseText))
@@ -1427,6 +1546,11 @@ public sealed class AssistantService(
         return "I could not confirm that NOAH executed that action. Please try again, or use a more direct command.";
     }
 
+    private static bool ShouldForceConversationMemory(string input)
+    {
+        return !string.IsNullOrWhiteSpace(input) &&
+               CurrentChatReferenceIntentRegex.IsMatch(NormalizeIntentInput(input));
+    }
     private static bool ShouldGuardAgainstFalseActionClaims(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
@@ -1435,8 +1559,15 @@ public sealed class AssistantService(
         }
 
         string normalizedInput = NormalizeIntentInput(input);
+
+        if (LooksLikeCodingRequest(normalizedInput) || IsSavedItemsPrioritizationRequest(normalizedInput) || IsToolLogicQuestion(normalizedInput))
+        {
+            return false;
+        }
+
         bool looksLikeToolIntent = GetExplicitStructuredActionHint(normalizedInput).HasValue ||
-                                   StructuredActionIntentRegex.IsMatch(normalizedInput);
+                                   StructuredActionIntentRegex.IsMatch(normalizedInput) ||
+                                   EmbeddedStructuredActionIntentRegex.IsMatch(normalizedInput);
 
         if (looksLikeToolIntent)
         {
@@ -1454,9 +1585,28 @@ public sealed class AssistantService(
             RegexOptions.IgnoreCase);
     }
 
+    private static bool IsSavedItemsPrioritizationRequest(string input)
+    {
+        return SavedItemsPrioritizationIntentRegex.IsMatch(NormalizeIntentInput(input));
+    }
+
+    private static bool IsToolLogicQuestion(string input)
+    {
+        return ToolLogicQuestionIntentRegex.IsMatch(NormalizeIntentInput(input));
+    }
+
     /// <summary>
     /// Filters requests that are worth sending through structured action planning.
     /// </summary>
+    private static bool LooksLikeCodingRequest(string input)
+    {
+        string normalizedInput = NormalizeIntentInput(input);
+        return CodingRequestIntentRegex.IsMatch(normalizedInput) &&
+               Regex.IsMatch(
+                   normalizedInput,
+                   @"^(?:write|generate|show|explain|why|debug|fix|implement|create)\b|```",
+                   RegexOptions.IgnoreCase);
+    }
     private static bool ShouldAttemptStructuredActionPlanning(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
@@ -1466,8 +1616,14 @@ public sealed class AssistantService(
 
         string normalizedInput = NormalizeIntentInput(input);
 
+        if (LooksLikeCodingRequest(normalizedInput) || IsToolLogicQuestion(normalizedInput))
+        {
+            return false;
+        }
+
         return GetExplicitStructuredActionHint(normalizedInput).HasValue ||
-               StructuredActionIntentRegex.IsMatch(normalizedInput);
+               StructuredActionIntentRegex.IsMatch(normalizedInput) ||
+               EmbeddedStructuredActionIntentRegex.IsMatch(normalizedInput);
     }
 
     /// <summary>
@@ -1482,6 +1638,11 @@ public sealed class AssistantService(
 
         string normalizedInput = NormalizeIntentInput(input);
 
+        if (EmbeddedTaskCreationIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.CreateTask;
+        }
+
         if (ExplicitNoteIntentRegex.IsMatch(normalizedInput))
         {
             return AssistantActionTypeDto.CreateNote;
@@ -1490,6 +1651,11 @@ public sealed class AssistantService(
         if (ExplicitTaskIntentRegex.IsMatch(normalizedInput))
         {
             return AssistantActionTypeDto.CreateTask;
+        }
+
+        if (ExplicitTaskCompletionIntentRegex.IsMatch(normalizedInput))
+        {
+            return AssistantActionTypeDto.MarkTaskCompleted;
         }
 
         if (ExplicitReminderIntentRegex.IsMatch(normalizedInput))

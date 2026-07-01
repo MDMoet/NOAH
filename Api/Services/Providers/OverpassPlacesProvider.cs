@@ -207,6 +207,14 @@ public sealed class OverpassPlacesProvider(
         List<string> filters = [];
 
         // Common terms get explicit OSM tags; unknown terms fall back to a case-insensitive name match.
+        if (string.IsNullOrWhiteSpace(normalizedQuery) || ContainsAny(normalizedQuery, "general", "nearby places", "places"))
+        {
+            filters.Add("[\"amenity\"]");
+            filters.Add("[\"shop\"]");
+            filters.Add("[\"tourism\"]");
+            filters.Add("[\"leisure\"]");
+        }
+
         if (ContainsAny(normalizedQuery, "cafe", "coffee"))
         {
             filters.Add("[\"amenity\"=\"cafe\"]");
