@@ -113,6 +113,9 @@
                             <Border Style="{StaticResource NoahCardBorder}"
                                     Margin="0,0,0,10"
                                     Padding="12,10">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding BindingContext.OpenMileageEntryCommand, Source={x:Reference RootGrid}}" CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
                                 <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
 
                                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
@@ -194,6 +197,7 @@
 
                     <controls:MileageOdometerChartView Grid.Row="1"
                                                        Entries="{Binding RecentMileage}"
+                                                       SelectedEntryCommand="{Binding OpenMileageEntryCommand}"
                                                        LineColor="{StaticResource NoahAccent}"
                                                        AxisColor="{StaticResource NoahTextMuted}"
                                                        GridLineColor="#241A36"
@@ -336,6 +340,7 @@
 
                             <controls:MileageOdometerChartView Grid.Row="1"
                                                                Entries="{Binding RecentMileage}"
+                                                               SelectedEntryCommand="{Binding OpenMileageEntryCommand}"
                                                                LineColor="{StaticResource NoahAccent}"
                                                                AxisColor="{StaticResource NoahTextMuted}"
                                                                GridLineColor="#241A36"
@@ -386,6 +391,9 @@
                                 <Border Style="{StaticResource NoahCardBorder}"
                                         Margin="0,0,0,10"
                                         Padding="12,10">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding BindingContext.OpenMileageEntryCommand, Source={x:Reference RootGrid}}" CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
                                     <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
 
                                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">

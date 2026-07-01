@@ -100,7 +100,7 @@
                                 </BindableLayout.ItemTemplate>
                             </VerticalStackLayout>
 
-                            <VerticalStackLayout IsVisible="{Binding HasAllNotesExceptRecent}"
+                            <VerticalStackLayout IsVisible="{Binding HasAllNotes}"
                                                  Spacing="8"
                                                  Margin="0,10,0,0">
                                 <Label Text="All notes:"
@@ -108,7 +108,7 @@
                                        Margin="2,0,0,0" />
 
                                 <VerticalStackLayout Spacing="0"
-                                                     BindableLayout.ItemsSource="{Binding AllNotesExceptRecent}">
+                                                     BindableLayout.ItemsSource="{Binding AllNotes}">
                                     <BindableLayout.ItemTemplate>
                                         <DataTemplate x:DataType="models:Note">
                                             <Border Margin="0,0,0,8"
@@ -175,6 +175,17 @@
                            MaximumWidthRequest="520"
                            WidthRequest="320"
                            HorizontalOptions="Start" />
+                    <components:IconButtonView Grid.Row="0"
+                                               WidthRequest="42"
+                                               HeightRequest="42"
+                                               CornerRadius="999"
+                                               NormalFillColor="#17122B"
+                                               Command="{Binding DeleteNoteCommand}"
+                                               IsVisible="{Binding IsNoteDeleteVisible}"
+                                               IconSource="delete_outline.svg"
+                                               IconWidth="20"
+                                               IconHeight="20"
+                                               HorizontalOptions="End" />
                     <Label Grid.Row="1"
                            Text="{Binding NoteEditorStatusText}"
                            FontSize="10"
@@ -274,10 +285,10 @@
 
                         <Label Text="All notes:"
                                Style="{StaticResource NoahSectionLabel}"
-                               IsVisible="{Binding HasAllNotesExceptRecent}" />
+                               IsVisible="{Binding HasAllNotes}" />
 
-                        <CollectionView ItemsSource="{Binding AllNotesExceptRecent}"
-                                        IsVisible="{Binding HasAllNotesExceptRecent}"
+                        <CollectionView ItemsSource="{Binding AllNotes}"
+                                        IsVisible="{Binding HasAllNotes}"
                                         SelectionMode="None"
                                         HeightRequest="270">
                             <CollectionView.ItemTemplate>
@@ -326,15 +337,27 @@
                 <Grid IsVisible="{Binding IsNoteDetailOpen}"
                       RowDefinitions="Auto,*,Auto"
                       Padding="14,14,14,8">
-                    <Image Source="close_purple.png"
-                           WidthRequest="22"
-                           HeightRequest="22"
-                           Aspect="AspectFit"
-                           HorizontalOptions="Start">
-                        <Image.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding BackToNotesCommand}" />
-                        </Image.GestureRecognizers>
-                    </Image>
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Image Source="close_purple.png"
+                               WidthRequest="22"
+                               HeightRequest="22"
+                               Aspect="AspectFit"
+                               HorizontalOptions="Start">
+                            <Image.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding BackToNotesCommand}" />
+                            </Image.GestureRecognizers>
+                        </Image>
+                        <components:IconButtonView Grid.Column="2"
+                                                   WidthRequest="42"
+                                                   HeightRequest="42"
+                                                   CornerRadius="999"
+                                                   NormalFillColor="#17122B"
+                                                   Command="{Binding DeleteNoteCommand}"
+                                                   IsVisible="{Binding IsNoteDeleteVisible}"
+                                                   IconSource="delete_outline.svg"
+                                                   IconWidth="20"
+                                                   IconHeight="20" />
+                    </Grid>
 
                     <ScrollView Grid.Row="1"
                                 Margin="0,20,0,0">

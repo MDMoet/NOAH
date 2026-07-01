@@ -74,6 +74,9 @@ public sealed class ApiMileageRepository(NoahApiClient apiClient) : IMileageRepo
         return Map(updated);
     }
 
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        => apiClient.DeleteAsync($"mileage/{id:D}", cancellationToken);
+
     private static MileageEntry Map(MileageEntryDto entryDto)
     {
         return new MileageEntry

@@ -22,7 +22,7 @@ public enum HomeActionDialogKind
 public class HomeViewModel : INotifyPropertyChanged
 {
     private static readonly TimeSpan NoteAutosaveDelay = TimeSpan.FromMilliseconds(500);
-    private const int RecentNoteCount = 20;
+    private const int RecentNoteCount = 10;
 
     private readonly INoteRepository noteRepository;
     private readonly ITaskRepository taskRepository;
@@ -31,8 +31,8 @@ public class HomeViewModel : INotifyPropertyChanged
     private readonly IOdometerRecognitionService odometerRecognitionService;
     private readonly IUserLocationService userLocationService;
     private readonly IAiChatService aiChatService;
-    private readonly UserDialogService userDialogService;
     private readonly AssistantApiSettingsService assistantApiSettingsService;
+    private readonly AppNavigationService navigationService;
     private readonly CalendarViewModel calendarViewModel;
     private CancellationTokenSource? searchCancellationTokenSource;
     private string preferredResponseMode = "Text";
@@ -44,8 +44,15 @@ public class HomeViewModel : INotifyPropertyChanged
     private string homeDialogTitle = string.Empty;
     private string homeDialogSubtitle = string.Empty;
     private string homeDialogPrimaryText = "Save";
+    private string homeDialogCancelText = "Cancel";
     private string homeDialogError = string.Empty;
     private string homeStatusText = string.Empty;
+    private string deleteConfirmationTitle = string.Empty;
+    private string deleteConfirmationMessage = string.Empty;
+    private string deleteConfirmationPrimaryText = "Confirm";
+    private string deleteConfirmationCancelText = "Cancel";
+    private bool isDeleteConfirmationVisible;
+    private TaskCompletionSource<bool>? deleteConfirmationCompletionSource;
     private string dialogTitleText = string.Empty;
     private string dialogDescriptionText = string.Empty;
     private DateTime dialogDate = DateTime.Today;
@@ -60,6 +67,9 @@ public class HomeViewModel : INotifyPropertyChanged
     private MileageEntrySourceDto pendingMileageSource = MileageEntrySourceDto.Manual;
     private string? pendingMileageSourceImagePath;
     private string? pendingMileageRecognizedText;
+    private TaskItem? taskBeingEdited;
+    private ReminderDto? reminderBeingEdited;
+    private MileageEntry? mileageBeingEdited;
     private bool isHomeLoading;
 
     public HomeViewModel(
@@ -70,9 +80,9 @@ public class HomeViewModel : INotifyPropertyChanged
         IOdometerRecognitionService odometerRecognitionService,
         IUserLocationService userLocationService,
         IAiChatService aiChatService,
-        UserDialogService userDialogService,
         AssistantApiSettingsService assistantApiSettingsService,
-        CalendarViewModel calendarViewModel)
+        CalendarViewModel calendarViewModel,
+        AppNavigationService navigationService)
     {
         this.noteRepository = noteRepository;
         this.taskRepository = taskRepository;
@@ -81,9 +91,9 @@ public class HomeViewModel : INotifyPropertyChanged
         this.odometerRecognitionService = odometerRecognitionService;
         this.userLocationService = userLocationService;
         this.aiChatService = aiChatService;
-        this.userDialogService = userDialogService;
         this.assistantApiSettingsService = assistantApiSettingsService;
         this.calendarViewModel = calendarViewModel;
+        this.navigationService = navigationService;
 
         ToggleChatCommand = new Command(async () => await NavigateChatAsync());
         ToggleChatMenuCommand = new Command(() => IsChatMenuOpen = !IsChatMenuOpen);
@@ -98,12 +108,18 @@ public class HomeViewModel : INotifyPropertyChanged
         OpenNoteCommand = new Command<Note>(OpenNote);
         BackToNotesCommand = new Command(CloseNoteDetail);
         CreateNoteCommand = new Command(BeginNewNote);
+        DeleteNoteCommand = new Command(async () => await DeleteSelectedNoteAsync());
         CreateReminderCommand = new Command(async () => await CreateReminderAsync());
         CreateTaskCommand = new Command(async () => await CreateTaskAsync());
+        OpenTaskCommand = new Command<TaskItem>(OpenTaskDialog);
         ScanOdometerCommand = new Command(async () => await ScanOdometerAsync());
         ManualMileageEntryCommand = new Command(async () => await CreateMileageEntryAsync(MileageEntrySourceDto.Manual));
+        OpenMileageEntryCommand = new Command<MileageEntry>(entry => OpenMileageDialog(entry));
         SubmitHomeDialogCommand = new Command(async () => await SubmitHomeDialogAsync());
         CancelHomeDialogCommand = new Command(CloseHomeDialog);
+        DeleteHomeDialogItemCommand = new Command(async () => await DeleteHomeDialogItemAsync());
+        ConfirmDeleteCommand = new Command(() => ResolveDeleteConfirmation(true));
+        CancelDeleteConfirmationCommand = new Command(() => ResolveDeleteConfirmation(false));
         SaveSettingsCommand = new Command(async () => await SaveSettingsAsync());
         SelectTextResponseModeCommand = new Command(() => PreferredResponseMode = "Text");
         SelectSpeechResponseModeCommand = new Command(() => PreferredResponseMode = "Speech");
@@ -123,6 +139,8 @@ public class HomeViewModel : INotifyPropertyChanged
 
     public ObservableCollection<Note> RecentNotes { get; } = [];
 
+    public ObservableCollection<Note> AllNotes { get; } = [];
+
     public ObservableCollection<Note> AllNotesExceptRecent { get; } = [];
 
     public ObservableCollection<TaskItem> TodayTasks { get; } = [];
@@ -140,6 +158,8 @@ public class HomeViewModel : INotifyPropertyChanged
 
     public bool HasNoRecentNotes => RecentNotes.Count == 0;
 
+    public bool HasAllNotes => AllNotes.Count > 0;
+
     public bool HasAllNotesExceptRecent => AllNotesExceptRecent.Count > 0;
 
     public bool HasTodayTasks => TodayTasks.Count > 0;
@@ -149,6 +169,10 @@ public class HomeViewModel : INotifyPropertyChanged
     public bool HasRecentMileage => RecentMileage.Count > 0;
 
     public bool HasNoRecentMileage => RecentMileage.Count == 0;
+
+    public bool IsNoteDeleteVisible => IsNoteDetailOpen && (SelectedNote != null || noteBeingEdited != null);
+
+    public bool IsEditingHomeDialogItem => taskBeingEdited != null || reminderBeingEdited != null || mileageBeingEdited != null;
 
     private Note? selectedNote;
     public Note? SelectedNote
@@ -169,6 +193,7 @@ public class HomeViewModel : INotifyPropertyChanged
             }
 
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsNoteDeleteVisible));
 
             if (IsNotesPageOpen && selectedNote != null && !suppressNoteEditorAutosave)
             {
@@ -315,19 +340,24 @@ public class HomeViewModel : INotifyPropertyChanged
             homeDialogKind = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsHomeDialogVisible));
+            OnPropertyChanged(nameof(IsHomeDialogHostVisible));
             OnPropertyChanged(nameof(IsTaskDialogVisible));
             OnPropertyChanged(nameof(IsReminderDialogVisible));
             OnPropertyChanged(nameof(IsMileageDialogVisible));
+            OnPropertyChanged(nameof(IsEditingHomeDialogItem));
         }
     }
 
     public bool IsHomeDialogVisible => HomeDialogKind != HomeActionDialogKind.None;
+
+    public bool IsHomeDialogHostVisible => IsHomeDialogVisible || IsDeleteConfirmationVisible;
 
     public bool IsTaskDialogVisible => HomeDialogKind == HomeActionDialogKind.Task;
 
     public bool IsReminderDialogVisible => HomeDialogKind == HomeActionDialogKind.Reminder;
 
     public bool IsMileageDialogVisible => HomeDialogKind == HomeActionDialogKind.Mileage;
+
 
     public string HomeDialogTitle
     {
@@ -347,6 +377,12 @@ public class HomeViewModel : INotifyPropertyChanged
         set { homeDialogPrimaryText = value; OnPropertyChanged(); }
     }
 
+    public string HomeDialogCancelText
+    {
+        get => homeDialogCancelText;
+        set { homeDialogCancelText = value; OnPropertyChanged(); }
+    }
+
     public string HomeDialogError
     {
         get => homeDialogError;
@@ -360,6 +396,41 @@ public class HomeViewModel : INotifyPropertyChanged
 
     public bool HasHomeDialogError => !string.IsNullOrWhiteSpace(HomeDialogError);
 
+    public bool IsDeleteConfirmationVisible
+    {
+        get => isDeleteConfirmationVisible;
+        private set
+        {
+            if (isDeleteConfirmationVisible == value) return;
+            isDeleteConfirmationVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsHomeDialogHostVisible));
+        }
+    }
+
+    public string DeleteConfirmationTitle
+    {
+        get => deleteConfirmationTitle;
+        private set { deleteConfirmationTitle = value; OnPropertyChanged(); }
+    }
+
+    public string DeleteConfirmationMessage
+    {
+        get => deleteConfirmationMessage;
+        private set { deleteConfirmationMessage = value; OnPropertyChanged(); }
+    }
+
+    public string DeleteConfirmationPrimaryText
+    {
+        get => deleteConfirmationPrimaryText;
+        private set { deleteConfirmationPrimaryText = value; OnPropertyChanged(); }
+    }
+
+    public string DeleteConfirmationCancelText
+    {
+        get => deleteConfirmationCancelText;
+        private set { deleteConfirmationCancelText = value; OnPropertyChanged(); }
+    }
     public string DialogTitleText
     {
         get => dialogTitleText;
@@ -406,12 +477,6 @@ public class HomeViewModel : INotifyPropertyChanged
     {
         get => mileageOdometerText;
         set { mileageOdometerText = value; OnPropertyChanged(); }
-    }
-
-    public string MileageTripText
-    {
-        get => mileageTripText;
-        set { mileageTripText = value; OnPropertyChanged(); }
     }
 
     public string MileageNoteText
@@ -472,7 +537,7 @@ public class HomeViewModel : INotifyPropertyChanged
     public bool IsNoteDetailOpen
     {
         get => isNoteDetailOpen;
-        set { isNoteDetailOpen = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotesListVisible)); }
+        set { isNoteDetailOpen = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotesListVisible)); OnPropertyChanged(nameof(IsNoteDeleteVisible)); }
     }
 
     public bool IsHomePageVisible => !IsNotesPageOpen && !IsCalendarPageOpen && !IsMileagePageOpen;
@@ -584,12 +649,18 @@ public class HomeViewModel : INotifyPropertyChanged
     public ICommand OpenNoteCommand { get; }
     public ICommand BackToNotesCommand { get; }
     public ICommand CreateNoteCommand { get; }
+    public ICommand DeleteNoteCommand { get; }
     public ICommand CreateReminderCommand { get; }
     public ICommand CreateTaskCommand { get; }
+    public ICommand OpenTaskCommand { get; }
     public ICommand ScanOdometerCommand { get; }
     public ICommand ManualMileageEntryCommand { get; }
+    public ICommand OpenMileageEntryCommand { get; }
     public ICommand SubmitHomeDialogCommand { get; }
     public ICommand CancelHomeDialogCommand { get; }
+    public ICommand DeleteHomeDialogItemCommand { get; }
+    public ICommand ConfirmDeleteCommand { get; }
+    public ICommand CancelDeleteConfirmationCommand { get; }
     public ICommand SaveSettingsCommand { get; }
     public ICommand SelectTextResponseModeCommand { get; }
     public ICommand SelectSpeechResponseModeCommand { get; }
@@ -632,11 +703,6 @@ public class HomeViewModel : INotifyPropertyChanged
     {
         IReadOnlyList<Note> notes = await noteRepository.GetAllAsync();
         PopulateNoteCollections(notes);
-
-        if (SelectedNote == null && RecentNotes.Count > 0)
-        {
-            SelectedNote = RecentNotes[0];
-        }
 
         RefreshHomeCollectionState();
     }
@@ -734,6 +800,7 @@ public class HomeViewModel : INotifyPropertyChanged
 
             Note storedNote = UpsertNote(savedNote);
             noteBeingEdited = storedNote;
+            OnPropertyChanged(nameof(IsNoteDeleteVisible));
 
             suppressNoteEditorAutosave = true;
             SelectedNote = storedNote;
@@ -754,6 +821,16 @@ public class HomeViewModel : INotifyPropertyChanged
 
     private Note UpsertNote(Note savedNote)
     {
+        Note? existingAllNote = AllNotes.FirstOrDefault(note => note.Id == savedNote.Id);
+        if (existingAllNote != null)
+        {
+            ApplyNoteValues(existingAllNote, savedNote);
+        }
+        else
+        {
+            AllNotes.Insert(0, savedNote);
+        }
+
         Note? existingNote = RecentNotes.FirstOrDefault(note => note.Id == savedNote.Id);
         Note? existingOtherNote = AllNotesExceptRecent.FirstOrDefault(note => note.Id == savedNote.Id);
 
@@ -791,7 +868,13 @@ public class HomeViewModel : INotifyPropertyChanged
     private void PopulateNoteCollections(IReadOnlyList<Note> notes)
     {
         RecentNotes.Clear();
+        AllNotes.Clear();
         AllNotesExceptRecent.Clear();
+
+        foreach (Note note in notes)
+        {
+            AllNotes.Add(note);
+        }
 
         HashSet<Guid> recentNoteIds = [];
 
@@ -914,6 +997,7 @@ public class HomeViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(HasRecentNotes));
         OnPropertyChanged(nameof(HasNoRecentNotes));
+        OnPropertyChanged(nameof(HasAllNotes));
         OnPropertyChanged(nameof(HasAllNotesExceptRecent));
         OnPropertyChanged(nameof(HasTodayTasks));
         OnPropertyChanged(nameof(HasNoTodayTasks));
@@ -926,6 +1010,7 @@ public class HomeViewModel : INotifyPropertyChanged
         noteSaveCancellationTokenSource?.Dispose();
         noteSaveCancellationTokenSource = null;
         noteBeingEdited = null;
+        OnPropertyChanged(nameof(IsNoteDeleteVisible));
 
         suppressNoteEditorAutosave = true;
         SelectedNote = null;
@@ -967,23 +1052,78 @@ public class HomeViewModel : INotifyPropertyChanged
 
     private void OpenTaskDialog(DateOnly plannedFor)
     {
+        taskBeingEdited = null;
         ResetHomeDialogInputs(plannedFor, new TimeOnly(9, 0));
         HomeDialogTitle = "New task";
         HomeDialogSubtitle = "Plan the task with the details NOAH needs.";
         HomeDialogPrimaryText = "Create task";
+        HomeDialogCancelText = "Cancel";
         SelectedTaskPriority = "Normal";
         TaskHasDueTime = false;
         HomeDialogKind = HomeActionDialogKind.Task;
     }
 
+    private void OpenTaskDialog(TaskItem task)
+    {
+        taskBeingEdited = task;
+        DateTime localDue = task.DueAtUtc?.LocalDateTime ?? task.PlannedFor?.ToDateTime(new TimeOnly(9, 0)) ?? DateTime.Today.AddHours(9);
+        ResetHomeDialogInputs(DateOnly.FromDateTime(localDue), TimeOnly.FromDateTime(localDue));
+        DialogTitleText = task.Title;
+        DialogDescriptionText = task.Description ?? string.Empty;
+        SelectedTaskPriority = task.Priority.ToString();
+        TaskHasDueTime = task.DueAtUtc.HasValue;
+        HomeDialogTitle = "Edit task";
+        HomeDialogSubtitle = "Update the saved task details.";
+        HomeDialogPrimaryText = "Save task";
+        HomeDialogCancelText = "Cancel";
+        HomeDialogKind = HomeActionDialogKind.Task;
+    }
+
     private void OpenReminderDialog(DateOnly triggerDate)
     {
+        reminderBeingEdited = null;
         ResetHomeDialogInputs(triggerDate, new TimeOnly(9, 0));
         HomeDialogTitle = "New reminder";
         HomeDialogSubtitle = "Set when NOAH should remind you.";
         HomeDialogPrimaryText = "Create reminder";
+        HomeDialogCancelText = "Cancel";
         ReminderShouldNotify = true;
         HomeDialogKind = HomeActionDialogKind.Reminder;
+    }
+
+    private void OpenReminderDialog(ReminderDto reminder)
+    {
+        reminderBeingEdited = reminder;
+        DateTime localTrigger = reminder.TriggerAtUtc?.LocalDateTime ?? DateTime.Today.AddHours(9);
+        ResetHomeDialogInputs(DateOnly.FromDateTime(localTrigger), TimeOnly.FromDateTime(localTrigger));
+        DialogTitleText = reminder.Title;
+        DialogDescriptionText = reminder.Message ?? string.Empty;
+        ReminderShouldNotify = reminder.ShouldNotify;
+        HomeDialogTitle = "Edit reminder";
+        HomeDialogSubtitle = "Update the saved reminder details.";
+        HomeDialogPrimaryText = "Save reminder";
+        HomeDialogCancelText = "Cancel";
+        HomeDialogKind = HomeActionDialogKind.Reminder;
+    }
+
+    public async Task OpenCalendarEventDialogAsync(CalendarEvent calendarEvent)
+    {
+        if (calendarEvent.Kind == CalendarEventKind.Task)
+        {
+            TaskItem? task = (await taskRepository.GetAllAsync()).FirstOrDefault(item => item.Id == calendarEvent.Id);
+            if (task != null)
+            {
+                OpenTaskDialog(task);
+            }
+
+            return;
+        }
+
+        ReminderDto? reminder = (await reminderRepository.GetAllAsync()).FirstOrDefault(item => item.Id == calendarEvent.Id);
+        if (reminder != null)
+        {
+            OpenReminderDialog(reminder);
+        }
     }
     private async Task ScanOdometerAsync()
     {
@@ -1041,6 +1181,27 @@ public class HomeViewModel : INotifyPropertyChanged
         HomeStatusText = "Odometer read from photo. Check the value and save the entry.";
     }
 
+    private void OpenMileageDialog(MileageEntry? entry)
+    {
+        if (entry == null)
+        {
+            return;
+        }
+
+        mileageBeingEdited = entry;
+        ResetHomeDialogInputs(DateOnly.FromDateTime(entry.Timestamp), TimeOnly.FromDateTime(entry.Timestamp));
+        HomeDialogTitle = "Edit mileage entry";
+        HomeDialogSubtitle = $"{entry.SourceDisplay} entry recorded {entry.Timestamp.ToString("d MMM yyyy HH:mm", CultureInfo.CurrentCulture)}";
+        HomeDialogPrimaryText = "Save entry";
+        HomeDialogCancelText = "Cancel";
+        MileageOdometerText = FormatWholeOdometerText(entry.Odometer) ?? string.Empty;
+        MileageNoteText = entry.Note.Trim();
+        pendingMileageSource = entry.Source;
+        pendingMileageSourceImagePath = entry.SourceImagePath;
+        pendingMileageRecognizedText = entry.RecognizedText;
+        HomeDialogKind = HomeActionDialogKind.Mileage;
+    }
+
     private Task CreateMileageEntryAsync(
         MileageEntrySourceDto source,
         string? sourceImagePath = null,
@@ -1062,8 +1223,9 @@ public class HomeViewModel : INotifyPropertyChanged
         HomeDialogTitle = source == MileageEntrySourceDto.PhotoOcr
             ? "Odometer photo"
             : "Mileage entry";
-        HomeDialogSubtitle = "Save the odometer reading and trip details.";
+        HomeDialogSubtitle = "Save the odometer reading.";
         HomeDialogPrimaryText = "Save entry";
+        HomeDialogCancelText = "Cancel";
         MileageNoteText = initialNote ?? string.Empty;
         MileageOdometerText = suggestedOdometerText ?? string.Empty;
         pendingMileageSource = source;
@@ -1072,6 +1234,150 @@ public class HomeViewModel : INotifyPropertyChanged
         HomeDialogKind = HomeActionDialogKind.Mileage;
     }
 
+    private async Task DeleteSelectedNoteAsync()
+    {
+        Note? note = noteBeingEdited ?? SelectedNote;
+
+        if (note == null)
+        {
+            return;
+        }
+
+        string noteTitle = string.IsNullOrWhiteSpace(note.Title) ? "this note" : $"\"{note.Title}\"";
+        bool confirmed = await ConfirmDeleteAsync(
+            "Delete note?",
+            $"Delete {noteTitle}? This cannot be undone.",
+            "Delete",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            noteSaveCancellationTokenSource?.Cancel();
+            noteSaveCancellationTokenSource?.Dispose();
+            noteSaveCancellationTokenSource = null;
+
+            if (note.Id != Guid.Empty)
+            {
+                await noteRepository.DeleteAsync(note.Id);
+                RemoveNoteFromCollections(note.Id);
+            }
+
+            suppressNoteEditorAutosave = true;
+            SelectedNote = null;
+            noteBeingEdited = null;
+            NoteEditorTitle = string.Empty;
+            NoteEditorContent = string.Empty;
+            NoteEditorStatusText = string.Empty;
+            suppressNoteEditorAutosave = false;
+
+            IsNoteDetailOpen = false;
+            RefreshHomeCollectionState();
+            OnPropertyChanged(nameof(IsNoteDeleteVisible));
+            HomeStatusText = "Note deleted.";
+        }
+        catch (Exception exception)
+        {
+            NoteEditorStatusText = $"Delete failed: {exception.Message}";
+        }
+    }
+
+    private void RemoveNoteFromCollections(Guid noteId)
+    {
+        RemoveNoteFromCollection(RecentNotes, noteId);
+        RemoveNoteFromCollection(AllNotes, noteId);
+        RemoveNoteFromCollection(AllNotesExceptRecent, noteId);
+    }
+
+    private static void RemoveNoteFromCollection(ObservableCollection<Note> notes, Guid noteId)
+    {
+        Note? note = notes.FirstOrDefault(item => item.Id == noteId);
+
+        if (note != null)
+        {
+            notes.Remove(note);
+        }
+    }
+
+    private async Task DeleteHomeDialogItemAsync()
+    {
+        try
+        {
+            if (taskBeingEdited != null)
+            {
+                if (!await ConfirmDeleteAsync("Delete task?", $"Delete \"{taskBeingEdited.Title}\"? This cannot be undone.", "Confirm", "Cancel"))
+                {
+                    return;
+                }
+
+                await taskRepository.DeleteAsync(taskBeingEdited.Id);
+                await LoadTasksAsync();
+                await calendarViewModel.RefreshAsync();
+                CloseHomeDialog();
+                HomeStatusText = "Task deleted.";
+                return;
+            }
+
+            if (reminderBeingEdited != null)
+            {
+                if (!await ConfirmDeleteAsync("Delete reminder?", $"Delete \"{reminderBeingEdited.Title}\"? This cannot be undone.", "Confirm", "Cancel"))
+                {
+                    return;
+                }
+
+                await reminderRepository.DeleteAsync(reminderBeingEdited.Id);
+                await calendarViewModel.RefreshAsync();
+                CloseHomeDialog();
+                HomeStatusText = "Reminder deleted.";
+                return;
+            }
+
+            if (mileageBeingEdited != null)
+            {
+                if (!await ConfirmDeleteAsync("Delete mileage entry?", $"Delete the {mileageBeingEdited.Timestamp:d MMM yyyy HH:mm} mileage entry? This cannot be undone.", "Confirm", "Cancel"))
+                {
+                    return;
+                }
+
+                await mileageRepository.DeleteAsync(mileageBeingEdited.Id);
+                await LoadMileageAsync();
+                CloseHomeDialog();
+                HomeStatusText = "Mileage entry deleted.";
+            }
+        }
+        catch (Exception exception)
+        {
+            HomeDialogError = exception.Message;
+        }
+    }
+
+    private Task<bool> ConfirmDeleteAsync(string title, string message, string accept, string cancel)
+    {
+        if (deleteConfirmationCompletionSource != null)
+        {
+            return Task.FromResult(false);
+        }
+
+        DeleteConfirmationTitle = title;
+        DeleteConfirmationMessage = message;
+        DeleteConfirmationPrimaryText = string.IsNullOrWhiteSpace(accept) ? "Confirm" : accept;
+        DeleteConfirmationCancelText = string.IsNullOrWhiteSpace(cancel) ? "Cancel" : cancel;
+        deleteConfirmationCompletionSource = new TaskCompletionSource<bool>();
+        IsDeleteConfirmationVisible = true;
+        return deleteConfirmationCompletionSource.Task;
+    }
+
+    private void ResolveDeleteConfirmation(bool confirmed)
+    {
+        TaskCompletionSource<bool>? completionSource = deleteConfirmationCompletionSource;
+        deleteConfirmationCompletionSource = null;
+        IsDeleteConfirmationVisible = false;
+        completionSource?.TrySetResult(confirmed);
+    }
     private async Task SubmitHomeDialogAsync()
     {
         HomeDialogError = string.Empty;
@@ -1109,23 +1415,26 @@ public class HomeViewModel : INotifyPropertyChanged
         DateTimeOffset? dueAtUtc = TaskHasDueTime
             ? BuildLocalDateTimeAsUtc(DialogDate, DialogTime)
             : null;
+        bool isEditing = taskBeingEdited != null;
 
         await taskRepository.SaveAsync(new TaskItem
         {
+            Id = taskBeingEdited?.Id ?? Guid.Empty,
             Title = DialogTitleText.Trim(),
             Description = string.IsNullOrWhiteSpace(DialogDescriptionText) ? null : DialogDescriptionText.Trim(),
-            Status = TaskItemStatusDto.Open,
+            Status = taskBeingEdited?.Status ?? TaskItemStatusDto.Open,
             Priority = ParseTaskPriority(SelectedTaskPriority),
             PlannedFor = taskDate,
-            DueAtUtc = dueAtUtc
+            DueAtUtc = dueAtUtc,
+            CreatedAtUtc = taskBeingEdited?.CreatedAtUtc ?? default,
+            UpdatedAtUtc = taskBeingEdited?.UpdatedAtUtc
         });
 
         await LoadTasksAsync();
         await calendarViewModel.RefreshAsync();
-        HomeStatusText = "Task created.";
+        HomeStatusText = isEditing ? "Task updated." : "Task created.";
         CloseHomeDialog();
     }
-
     private async Task SubmitReminderDialogAsync()
     {
         if (string.IsNullOrWhiteSpace(DialogTitleText))
@@ -1135,29 +1444,29 @@ public class HomeViewModel : INotifyPropertyChanged
         }
 
         DateTimeOffset triggerAtUtc = BuildLocalDateTimeAsUtc(DialogDate, DialogTime);
+        bool isEditing = reminderBeingEdited != null;
         ReminderDto reminder = new(
-            Guid.Empty,
+            reminderBeingEdited?.Id ?? Guid.Empty,
             DialogTitleText.Trim(),
             string.IsNullOrWhiteSpace(DialogDescriptionText) ? null : DialogDescriptionText.Trim(),
-            ReminderTriggerTypeDto.Time,
-            ReminderStatusDto.Scheduled,
+            reminderBeingEdited?.TriggerType ?? ReminderTriggerTypeDto.Time,
+            reminderBeingEdited?.Status ?? ReminderStatusDto.Scheduled,
             ReminderShouldNotify,
             triggerAtUtc,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            default,
-            null);
+            reminderBeingEdited?.TriggerLocation,
+            reminderBeingEdited?.TriggerRadiusMeters,
+            reminderBeingEdited?.LastTriggeredAtUtc,
+            reminderBeingEdited?.TaskItemId,
+            reminderBeingEdited?.NoteId,
+            reminderBeingEdited?.SavedLocationId,
+            reminderBeingEdited?.CreatedAtUtc ?? default,
+            reminderBeingEdited?.UpdatedAtUtc);
 
         await reminderRepository.SaveAsync(reminder);
         await calendarViewModel.RefreshAsync();
-        HomeStatusText = "Reminder created.";
+        HomeStatusText = isEditing ? "Reminder updated." : "Reminder created.";
         CloseHomeDialog();
     }
-
     private async Task SubmitMileageDialogAsync()
     {
         if (!TryParseWholeNumber(MileageOdometerText, out double odometer) || odometer <= 0)
@@ -1166,12 +1475,8 @@ public class HomeViewModel : INotifyPropertyChanged
             return;
         }
 
-        if (!TryParseOptionalDecimal(MileageTripText, out double tripKm))
-        {
-            HomeDialogError = "Enter a valid trip distance or leave it empty.";
-            return;
-        }
-
+        DateTimeOffset recordedAtUtc = BuildLocalDateTimeAsUtc(DialogDate, DialogTime);
+        double tripKm = await CalculateTripDistanceKmAsync(odometer, recordedAtUtc);
         CurrentLocationResult? currentLocationResult = null;
 
         if (MileageAttachCurrentLocation)
@@ -1185,24 +1490,41 @@ public class HomeViewModel : INotifyPropertyChanged
             }
         }
 
+        bool isEditing = mileageBeingEdited != null;
         await mileageRepository.SaveAsync(new MileageEntry
         {
-            RecordedAtUtc = BuildLocalDateTimeAsUtc(DialogDate, DialogTime),
+            Id = mileageBeingEdited?.Id ?? Guid.Empty,
+            RecordedAtUtc = recordedAtUtc,
             Odometer = odometer,
             TripKm = tripKm,
             Source = pendingMileageSource,
             SourceImagePath = pendingMileageSourceImagePath,
-            RecognizedText = pendingMileageSource == MileageEntrySourceDto.PhotoOcr ? pendingMileageRecognizedText : null,
-            CorrectedText = pendingMileageSource == MileageEntrySourceDto.PhotoOcr ? odometer.ToString("0", CultureInfo.InvariantCulture) : null,
-            LocationLatitude = currentLocationResult?.Coordinate?.Latitude,
-            LocationLongitude = currentLocationResult?.Coordinate?.Longitude,
-            LocationAccuracyMeters = currentLocationResult?.Coordinate?.AccuracyMeters,
-            Note = string.IsNullOrWhiteSpace(MileageNoteText) ? string.Empty : MileageNoteText.Trim()
+            RecognizedText = pendingMileageSource == MileageEntrySourceDto.PhotoOcr ? pendingMileageRecognizedText : mileageBeingEdited?.RecognizedText,
+            CorrectedText = pendingMileageSource == MileageEntrySourceDto.PhotoOcr ? odometer.ToString("0", CultureInfo.InvariantCulture) : mileageBeingEdited?.CorrectedText,
+            LocationLatitude = currentLocationResult?.Coordinate?.Latitude ?? mileageBeingEdited?.LocationLatitude,
+            LocationLongitude = currentLocationResult?.Coordinate?.Longitude ?? mileageBeingEdited?.LocationLongitude,
+            LocationAccuracyMeters = currentLocationResult?.Coordinate?.AccuracyMeters ?? mileageBeingEdited?.LocationAccuracyMeters,
+            Note = string.IsNullOrWhiteSpace(MileageNoteText) ? string.Empty : MileageNoteText.Trim(),
+            CreatedAtUtc = mileageBeingEdited?.CreatedAtUtc ?? default,
+            UpdatedAtUtc = mileageBeingEdited?.UpdatedAtUtc
         });
 
         await LoadMileageAsync();
-        HomeStatusText = "Mileage entry saved.";
+        HomeStatusText = isEditing ? "Mileage entry updated." : "Mileage entry saved.";
         CloseHomeDialog();
+    }
+
+    private async Task<double> CalculateTripDistanceKmAsync(double odometer, DateTimeOffset recordedAtUtc)
+    {
+        IReadOnlyList<MileageEntry> entries = await mileageRepository.GetRecentAsync(500);
+        MileageEntry? previousEntry = entries
+            .Where(entry => entry.Id != mileageBeingEdited?.Id && entry.RecordedAtUtc < recordedAtUtc)
+            .OrderByDescending(entry => entry.RecordedAtUtc)
+            .FirstOrDefault();
+
+        return previousEntry == null
+            ? 0
+            : Math.Max(0, odometer - previousEntry.Odometer);
     }
 
     private void ResetHomeDialogInputs(DateOnly date, TimeOnly time)
@@ -1210,10 +1532,10 @@ public class HomeViewModel : INotifyPropertyChanged
         DialogTitleText = string.Empty;
         DialogDescriptionText = string.Empty;
         MileageOdometerText = string.Empty;
-        MileageTripText = string.Empty;
         MileageNoteText = string.Empty;
         MileageAttachCurrentLocation = false;
         HomeDialogError = string.Empty;
+        HomeDialogCancelText = "Cancel";
         DialogDate = date.ToDateTime(TimeOnly.MinValue);
         DialogTime = time.ToTimeSpan();
     }
@@ -1225,6 +1547,10 @@ public class HomeViewModel : INotifyPropertyChanged
         pendingMileageSourceImagePath = null;
         pendingMileageRecognizedText = null;
         pendingMileageSource = MileageEntrySourceDto.Manual;
+        taskBeingEdited = null;
+        reminderBeingEdited = null;
+        mileageBeingEdited = null;
+        HomeDialogCancelText = "Cancel";
     }
 
     private static DateTimeOffset BuildLocalDateTimeAsUtc(DateTime date, TimeSpan time)
@@ -1310,16 +1636,6 @@ public class HomeViewModel : INotifyPropertyChanged
                double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out result);
     }
 
-    private static bool TryParseOptionalDecimal(string? value, out double result)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            result = 0;
-            return true;
-        }
-
-        return TryParseDecimal(value, out result);
-    }
 
     public void NavigateToSection(string? section)
     {
@@ -1356,7 +1672,7 @@ public class HomeViewModel : INotifyPropertyChanged
         IsChatMenuOpen = false;
         IsChatOpen = false;
 
-        await Shell.Current.GoToAsync("assistant");
+        await navigationService.NavigateAssistantAsync();
     }
 
     private void NavigateHome()
@@ -1380,10 +1696,6 @@ public class HomeViewModel : INotifyPropertyChanged
         IsChatMenuOpen = false;
         IsSettingsOpen = false;
 
-        if (SelectedNote == null && RecentNotes.Count > 0)
-        {
-            SelectedNote = RecentNotes[0];
-        }
     }
 
     private void OpenNote(Note? note)
@@ -1452,7 +1764,8 @@ public class HomeViewModel : INotifyPropertyChanged
         assistantApiSettingsService.Save(new AssistantClientSettings(
             ApiBaseUrl.Trim(),
             ApiKey.Trim(),
-            currentSettings.LastSelectedChatId));
+            currentSettings.LastSelectedChatId,
+            currentSettings.ShareLocationAutomatically));
         IsSettingsOpen = false;
         return Task.CompletedTask;
     }

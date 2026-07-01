@@ -112,6 +112,9 @@
                                     <BindableLayout.ItemTemplate>
                                         <DataTemplate x:DataType="models:TaskItem">
                                             <Border Style="{StaticResource NoahCardBorder}" WidthRequest="110" HeightRequest="68" Padding="10,8">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding BindingContext.OpenTaskCommand, Source={x:Reference RootGrid}}" CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
                                                 <Grid RowDefinitions="*,Auto">
                                                     <Label Text="{Binding Title}" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" TextColor="{StaticResource NoahTextPrimary}" />
                                                     <Label Grid.Row="1" Text="{Binding DueDisplay}" FontSize="8" HorizontalOptions="End" TextColor="{StaticResource NoahAccent}" />
@@ -257,6 +260,9 @@
                                 <BindableLayout.ItemTemplate>
                                     <DataTemplate x:DataType="models:TaskItem">
                                         <Border Style="{StaticResource NoahCardBorder}" WidthRequest="88" HeightRequest="68" Padding="8">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding BindingContext.OpenTaskCommand, Source={x:Reference RootGrid}}" CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
                                             <Grid RowDefinitions="*,Auto">
                                                 <Label Text="{Binding Title}" TextColor="{StaticResource NoahTextPrimary}" FontSize="11" FontFamily="OpenSansSemibold" FontAttributes="Bold" LineBreakMode="WordWrap" />
                                                 <Label Grid.Row="1" Text="{Binding DueDisplay}" TextColor="{StaticResource NoahAccent}" FontSize="8" HorizontalOptions="End" />
@@ -288,7 +294,7 @@
         <views:CalendarAdaptiveView IsVisible="{Binding IsCalendarPageOpen}" />
         <views:MileageAdaptiveView IsVisible="{Binding IsMileagePageOpen}" />
 
-        <components:HomeActionDialogView IsVisible="{Binding IsHomeDialogVisible}" />
+        <components:HomeActionDialogView IsVisible="{Binding IsHomeDialogHostVisible}" />
 
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="LayoutStates">

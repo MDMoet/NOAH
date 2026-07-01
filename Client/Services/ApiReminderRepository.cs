@@ -47,4 +47,6 @@ public sealed class ApiReminderRepository(NoahApiClient apiClient) : IReminderRe
 
         return await apiClient.PutAsync<UpdateReminderRequest, ReminderDto>($"reminders/{reminder.Id:D}", updateRequest, cancellationToken);
     }
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        => apiClient.DeleteAsync($"reminders/{id:D}", cancellationToken);
 }

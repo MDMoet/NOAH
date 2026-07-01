@@ -67,7 +67,8 @@
 
     <Grid BackgroundColor="#99000000"
           Padding="24">
-        <Border BackgroundColor="{StaticResource NoahCard}"
+        <Border IsVisible="{Binding IsHomeDialogVisible}"
+                BackgroundColor="{StaticResource NoahCard}"
                 Stroke="{StaticResource NoahAccent}"
                 StrokeThickness="2"
                 StrokeShape="RoundRectangle 14"
@@ -102,7 +103,7 @@
 
                 <Border Grid.Row="1"
                         IsVisible="{Binding HasHomeDialogError}"
-                        BackgroundColor="#17122B"
+                        BackgroundColor="{StaticResource NoahCardSelected}"
                         Stroke="{StaticResource NoahAccent}"
                         StrokeThickness="0.7"
                         StrokeShape="RoundRectangle 10"
@@ -123,7 +124,7 @@
                                        Text="{Binding DialogTitleText}"
                                        Placeholder="Task title" />
                             </Border>
-                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
+                            <Border BackgroundColor="{StaticResource NoahCardSelected}" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
                                 <Editor Style="{StaticResource DialogEditorStyle}"
                                         Text="{Binding DialogDescriptionText}"
                                         Placeholder="Description" />
@@ -167,7 +168,7 @@
                                        Text="{Binding DialogTitleText}"
                                        Placeholder="Reminder title" />
                             </Border>
-                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
+                            <Border BackgroundColor="{StaticResource NoahCardSelected}" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
                                 <Editor Style="{StaticResource DialogEditorStyle}"
                                         Text="{Binding DialogDescriptionText}"
                                         Placeholder="Message" />
@@ -205,12 +206,6 @@
                                        Placeholder="Odometer reading in km"
                                        Keyboard="Telephone" />
                             </Border>
-                            <Border Style="{StaticResource DialogFieldBorderStyle}">
-                                <Entry Style="{StaticResource DialogEntryStyle}"
-                                       Text="{Binding MileageTripText}"
-                                       Placeholder="Trip distance in km (optional)"
-                                       Keyboard="Numeric" />
-                            </Border>
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <Border Style="{StaticResource DialogFieldBorderStyle}">
                                     <Grid VerticalOptions="Center">
@@ -235,17 +230,34 @@
                                        TextColor="{StaticResource NoahTextPrimary}"
                                        VerticalOptions="Center" />
                             </Grid>
-                            <Border BackgroundColor="#17122B" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
+                            <Border BackgroundColor="{StaticResource NoahCardSelected}" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="16,10" MinimumHeightRequest="104">
                                 <Editor Style="{StaticResource DialogEditorStyle}"
                                         Text="{Binding MileageNoteText}"
                                         Placeholder="Note" />
                             </Border>
                         </VerticalStackLayout>
+
                     </VerticalStackLayout>
                 </ScrollView>
 
-                <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="10">
-                    <Border BackgroundColor="Transparent"
+                <Grid Grid.Row="3" ColumnDefinitions="Auto,*,*" ColumnSpacing="10">
+                    <Border BackgroundColor="{StaticResource NoahCardSelected}"
+                            Stroke="{StaticResource NoahAccent}"
+                            StrokeThickness="0.7"
+                            StrokeShape="RoundRectangle 999"
+                            Padding="14,11"
+                            IsVisible="{Binding IsEditingHomeDialogItem}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding DeleteHomeDialogItemCommand}" />
+                        </Border.GestureRecognizers>
+                        <Image Source="delete_outline.svg"
+                               WidthRequest="20"
+                               HeightRequest="20"
+                               Aspect="AspectFit"
+                               HorizontalOptions="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            BackgroundColor="Transparent"
                             Stroke="{StaticResource NoahAccent}"
                             StrokeThickness="1"
                             StrokeShape="RoundRectangle 999"
@@ -253,7 +265,7 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding CancelHomeDialogCommand}" />
                         </Border.GestureRecognizers>
-                        <Label Text="Cancel"
+                        <Label Text="{Binding HomeDialogCancelText}"
                                HorizontalOptions="Center"
                                FontSize="13"
                                FontFamily="OpenSansSemibold"
@@ -261,7 +273,7 @@
                                TextColor="{StaticResource NoahAccent}" />
                     </Border>
 
-                    <Border Grid.Column="1"
+                    <Border Grid.Column="2"
                             BackgroundColor="{StaticResource NoahAccent}"
                             StrokeThickness="0"
                             StrokeShape="RoundRectangle 999"
@@ -274,10 +286,74 @@
                                FontSize="13"
                                FontFamily="OpenSansSemibold"
                                FontAttributes="Bold"
-                               TextColor="White" />
+                               TextColor="{StaticResource NoahTextPrimary}" />
                     </Border>
                 </Grid>
             </Grid>
         </Border>
-    </Grid>
+
+        <Grid BackgroundColor="#AA000000"
+              Padding="28"
+              IsVisible="{Binding IsDeleteConfirmationVisible}">
+            <Border BackgroundColor="{StaticResource NoahCard}"
+                    Stroke="{StaticResource NoahAccent}"
+                    StrokeThickness="1.2"
+                    StrokeShape="RoundRectangle 14"
+                    Padding="24"
+                    MaximumWidthRequest="420"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center">
+                <VerticalStackLayout Spacing="18">
+                    <Image Source="delete_outline.svg"
+                           WidthRequest="34"
+                           HeightRequest="34"
+                           Aspect="AspectFit"
+                           HorizontalOptions="Center" />
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="{Binding DeleteConfirmationTitle}"
+                               FontSize="22"
+                               FontFamily="OpenSansSemibold"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NoahAccent}"
+                               HorizontalTextAlignment="Center" />
+                        <Label Text="{Binding DeleteConfirmationMessage}"
+                               FontSize="13"
+                               TextColor="{StaticResource NoahTextSecondary}"
+                               HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Border BackgroundColor="Transparent"
+                                Stroke="{StaticResource NoahAccent}"
+                                StrokeThickness="1"
+                                StrokeShape="RoundRectangle 999"
+                                Padding="0,11">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding CancelDeleteConfirmationCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="{Binding DeleteConfirmationCancelText}"
+                                   HorizontalOptions="Center"
+                                   FontSize="13"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahAccent}" />
+                        </Border>
+                        <Border Grid.Column="1"
+                                BackgroundColor="{StaticResource NoahAccent}"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 999"
+                                Padding="0,11">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ConfirmDeleteCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="{Binding DeleteConfirmationPrimaryText}"
+                                   HorizontalOptions="Center"
+                                   FontSize="13"
+                                   FontFamily="OpenSansSemibold"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NoahTextPrimary}" />
+                        </Border>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>    </Grid>
 </ContentView>

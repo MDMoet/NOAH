@@ -73,6 +73,9 @@ public sealed class ApiTaskRepository(NoahApiClient apiClient) : ITaskRepository
         await apiClient.PutAsync<UpdateTaskItemRequest, TaskItemDto>($"tasks/{id:D}", request, cancellationToken);
     }
 
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        => apiClient.DeleteAsync($"tasks/{id:D}", cancellationToken);
+
     private static TaskItem Map(TaskItemDto taskDto)
     {
         return new TaskItem
