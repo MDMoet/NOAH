@@ -4,11 +4,22 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:pages="clr-namespace:Client.Pages"
-    Title="NOAH">
+    xmlns:client="clr-namespace:Client"
+    Shell.NavBarIsVisible="False"
+    Shell.NavBarHasShadow="False"
+    FlyoutBehavior="Disabled">
 
     <ShellContent
         Title="Home"
         ContentTemplate="{DataTemplate pages:HomePage}"
+        Shell.NavBarIsVisible="False"
         Route="HomePage" />
+
+    <ShellContent
+        Title="Chat"
+        ContentTemplate="{DataTemplate client:MainPage}"
+        Shell.NavBarIsVisible="False"
+        FlyoutItemIsVisible="False"
+        Route="assistant" />
 
 </Shell>

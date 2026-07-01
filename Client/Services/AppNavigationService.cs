@@ -25,6 +25,20 @@ public sealed class AppNavigationService(IServiceProvider serviceProvider)
         return SetRootPageAsync(serviceProvider.GetRequiredService<AppShell>());
     }
 
+    public Task NavigateHomeSectionAsync(string? section = null)
+    {
+        string route = string.IsNullOrWhiteSpace(section)
+            ? "//HomePage"
+            : $"//HomePage?section={Uri.EscapeDataString(section)}";
+
+        return Shell.Current.GoToAsync(route);
+    }
+
+    public Task NavigateAssistantAsync()
+    {
+        return Shell.Current.GoToAsync("//assistant");
+    }
+
     private static Task SetRootPageAsync(Page page)
     {
         TaskCompletionSource<bool> taskCompletionSource = new();

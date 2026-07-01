@@ -42,7 +42,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<AppNavigationService>();
         builder.Services.AddSingleton<AssistantApiService>();
         builder.Services.AddSingleton<NoahApiClient>();
-        builder.Services.AddSingleton<UserDialogService>();
         builder.Services.AddSingleton<IUserLocationService, DeviceLocationService>();
         builder.Services.AddSingleton<INoteRepository, ApiNoteRepository>();
         builder.Services.AddSingleton<ITaskRepository, ApiTaskRepository>();
