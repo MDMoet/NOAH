@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Specialized;
 using System.Globalization;
+using System.Windows.Input;
 using Client.Models;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -15,6 +16,11 @@ public sealed class MileageOdometerChartView : GraphicsView
         typeof(MileageOdometerChartView),
         default(IEnumerable),
         propertyChanged: OnEntriesChanged);
+
+    public static readonly BindableProperty SelectedEntryCommandProperty = BindableProperty.Create(
+        nameof(SelectedEntryCommand),
+        typeof(ICommand),
+        typeof(MileageOdometerChartView));
 
     public static readonly BindableProperty LineColorProperty = BindableProperty.Create(
         nameof(LineColor),
@@ -57,12 +63,19 @@ public sealed class MileageOdometerChartView : GraphicsView
     {
         Drawable = chartDrawable;
         MinimumHeightRequest = 240;
+        StartInteraction += OnStartInteraction;
     }
 
     public IEnumerable? Entries
     {
         get => (IEnumerable?)GetValue(EntriesProperty);
         set => SetValue(EntriesProperty, value);
+    }
+
+    public ICommand? SelectedEntryCommand
+    {
+        get => (ICommand?)GetValue(SelectedEntryCommandProperty);
+        set => SetValue(SelectedEntryCommandProperty, value);
     }
 
     public Color LineColor
@@ -122,6 +135,23 @@ public sealed class MileageOdometerChartView : GraphicsView
         RefreshDrawable();
     }
 
+    private void OnStartInteraction(object? sender, TouchEventArgs e)
+    {
+        PointF? touchPoint = e.Touches.FirstOrDefault();
+        if (!touchPoint.HasValue)
+        {
+            return;
+        }
+
+        MileageEntry? selectedEntry = chartDrawable.HitTest(touchPoint.Value);
+        ICommand? command = SelectedEntryCommand;
+
+        if (selectedEntry != null && command?.CanExecute(selectedEntry) == true)
+        {
+            command.Execute(selectedEntry);
+        }
+    }
+
     private void RefreshDrawable()
     {
         chartDrawable.Entries = Entries?
@@ -156,6 +186,30 @@ public sealed class MileageOdometerChartView : GraphicsView
         public Color LabelColor { get; set; } = Colors.White;
 
         public Color MutedLabelColor { get; set; } = Color.FromArgb("#9B93AA");
+
+        private IReadOnlyList<ChartPoint> plottedPoints = [];
+
+        public MileageEntry? HitTest(PointF point)
+        {
+            const float hitRadius = 24f;
+            float bestDistanceSquared = hitRadius * hitRadius;
+            MileageEntry? bestEntry = null;
+
+            foreach (ChartPoint plottedPoint in plottedPoints)
+            {
+                float dx = plottedPoint.Point.X - point.X;
+                float dy = plottedPoint.Point.Y - point.Y;
+                float distanceSquared = (dx * dx) + (dy * dy);
+
+                if (distanceSquared <= bestDistanceSquared)
+                {
+                    bestDistanceSquared = distanceSquared;
+                    bestEntry = plottedPoint.Entry;
+                }
+            }
+
+            return bestEntry;
+        }
 
         public void Draw(ICanvas canvas, RectF dirtyRect)
         {
@@ -247,11 +301,13 @@ public sealed class MileageOdometerChartView : GraphicsView
 
         private void DrawSeries(ICanvas canvas, RectF plotArea, double minY, double maxY)
         {
-            List<PointF> points = Entries
-                .Select((entry, index) => new PointF(
-                    MapX(entry, index, plotArea),
-                    MapY(entry.Odometer, plotArea, minY, maxY)))
+            plottedPoints = Entries
+                .Select((entry, index) => new ChartPoint(
+                    entry,
+                    new PointF(MapX(index, plotArea), MapY(entry.Odometer, plotArea, minY, maxY))))
                 .ToList();
+
+            List<PointF> points = plottedPoints.Select(static point => point.Point).ToList();
 
             if (points.Count > 1)
             {
@@ -299,10 +355,10 @@ public sealed class MileageOdometerChartView : GraphicsView
             canvas.StrokeColor = GridLineColor;
             canvas.StrokeSize = 1;
 
-            foreach (int index in CreateDateLabelIndexes())
+            foreach (int index in CreateDateLabelIndexes(plotArea))
             {
                 MileageEntry entry = Entries[index];
-                float x = MapX(entry, index, plotArea);
+                float x = MapX(index, plotArea);
 
                 canvas.DrawLine(x, plotArea.Top, x, plotArea.Bottom);
                 canvas.DrawString(
@@ -342,23 +398,14 @@ public sealed class MileageOdometerChartView : GraphicsView
             return (Math.Max(0, min - padding), max + padding);
         }
 
-        private float MapX(MileageEntry entry, int index, RectF plotArea)
+        private float MapX(int index, RectF plotArea)
         {
             if (Entries.Count == 1)
             {
                 return plotArea.Center.X;
             }
 
-            long minTicks = Entries[0].RecordedAtUtc.UtcDateTime.Ticks;
-            long maxTicks = Entries[^1].RecordedAtUtc.UtcDateTime.Ticks;
-
-            if (minTicks == maxTicks)
-            {
-                return plotArea.Left + (plotArea.Width * index / (Entries.Count - 1));
-            }
-
-            double percent = (entry.RecordedAtUtc.UtcDateTime.Ticks - minTicks) / (double)(maxTicks - minTicks);
-            return plotArea.Left + (float)(plotArea.Width * percent);
+            return plotArea.Left + (plotArea.Width * index / (Entries.Count - 1));
         }
 
         private static float MapY(double odometer, RectF plotArea, double minY, double maxY)
@@ -367,15 +414,36 @@ public sealed class MileageOdometerChartView : GraphicsView
             return plotArea.Bottom - (float)(plotArea.Height * percent);
         }
 
-        private IReadOnlyList<int> CreateDateLabelIndexes()
+        private IReadOnlyList<int> CreateDateLabelIndexes(RectF plotArea)
         {
-            return Entries.Count switch
+            if (Entries.Count == 0)
             {
-                1 => [0],
-                2 => [0, 1],
-                _ => [0, Entries.Count / 2, Entries.Count - 1]
-            };
+                return [];
+            }
+
+            int maxLabels = Math.Clamp((int)Math.Floor(plotArea.Width / 96f), 1, Math.Min(Entries.Count, 6));
+
+            if (maxLabels == 1)
+            {
+                return [Entries.Count - 1];
+            }
+
+            List<int> indexes = [];
+            double step = (Entries.Count - 1) / (double)(maxLabels - 1);
+
+            for (int labelIndex = 0; labelIndex < maxLabels; labelIndex++)
+            {
+                int entryIndex = (int)Math.Round(labelIndex * step);
+                if (!indexes.Contains(entryIndex))
+                {
+                    indexes.Add(entryIndex);
+                }
+            }
+
+            return indexes;
         }
+
+        private sealed record ChartPoint(MileageEntry Entry, PointF Point);
 
         private static string FormatOdometerTick(double value, double range)
         {
